@@ -1,0 +1,114 @@
+{
+  "telegram_bot_token": "SEU_TELEGRAM_BOT_TOKEN_AQUI",
+  "timezone": "America/Sao_Paulo",
+  "welcome": {
+    "enabled": true,
+    "delete_service_messages": true,
+    "delete_welcome_after_seconds": 600,
+    "photo": null,
+    "article_url": null,
+    "buttons": [
+      [
+        {
+          "text": "📜 Regras do Grupo",
+          "callback_data": "btn:rules"
+        },
+        {
+          "text": "🎥 Como Pesquisar",
+          "callback_data": "btn:tutorial"
+        }
+      ]
+    ],
+    "message": "👋 Olá, {name}! Seja bem-vindo(a) ao grupo *{group}*!\n\n📌 Toque nos botões abaixo para consultar as regras do grupo e aprender a pesquisar partituras rapidamente pelo bot!"
+  },
+  "antispam": {
+    "enabled": true,
+    "block_links": true,
+    "block_telegram_invites": true,
+    "block_forwards": true,
+    "warn_delete_after_seconds": 8,
+    "banned_words_action": "warn",
+    "allowed_domains": [
+      "drive.google.com",
+      "docs.google.com"
+    ],
+    "banned_words": [
+      "ganhe dinheiro",
+      "renda extra",
+      "investimento garantido",
+      "trabalhe em casa ganhando",
+      "clique no link",
+      "crypto pump",
+      "robô do pix",
+      "plataforma pagando",
+      "t.me/joinchat",
+      "cassino online",
+      "tigrinho"
+    ]
+  },
+  "antiflood": {
+    "enabled": true,
+    "max_messages": 5,
+    "time_window_seconds": 5,
+    "mute_duration_minutes": 5,
+    "warn_delete_after_seconds": 8
+  },
+  "antirepeat": {
+    "enabled": true,
+    "max_repeated": 2,
+    "time_window_hours": 2,
+    "time_window_seconds": 7200,
+    "warn_delete_after_seconds": 8
+  },
+  "command_cleanup": {
+    "delete_admin_commands": true,
+    "delete_non_admin_commands": true,
+    "bot_notice_delete_seconds": 10
+  },
+  "group_welcomes": {},
+  "whitelist_users": [],
+  "captcha": {
+    "enabled": false,
+    "timeout_seconds": 180,
+    "kick_on_timeout": true
+  },
+  "join_requests": {
+    "auto_approve": false,
+    "send_welcome_dm": true,
+    "dm_message": "👋 Olá, {name}!\n\nSua solicitação de entrada no grupo *{group}* foi aprovada com sucesso! 🎵\nSeja muito bem-vindo(a) à nossa comunidade musical!"
+  },
+  "rules": "📜 *Regras do Grupo:*\n\n1. *Respeito acima de tudo*: ofensas, discriminação ou desrespeito não serão tolerados.\n2. *Sem Spam ou Divulgações*: links e convites não autorizados serão removidos automaticamente.\n3. *Sem Flood ou Mensagens Repetidas*: evite enviar a mesma mensagem várias vezes seguidas.\n4. *Foco no objetivo do grupo*: mantenha as discussões produtivas e pertinentes.\n\nDúvidas? Fale com um dos administradores!",
+  "recurring_messages": [],
+  "scheduled_transmissions": [],
+  "auto_responses": [],
+  "acervo_group_auto_reply": false,
+  "main_group_id": null,
+  "linked_groups": [],
+  "linked_channels": [],
+  "main_channel_id": null,
+  "log_channel_id": null,
+  "locks": {
+    "sticker": false,
+    "gif": false,
+    "audio": false,
+    "voice": false,
+    "video": false,
+    "videonote": false,
+    "document": false,
+    "contact": false,
+    "poll": false,
+    "forward": false,
+    "link": false
+  },
+  "notes": {},
+  "night_mode": {
+    "enabled": false,
+    "start": "23:00",
+    "end": "07:00",
+    "warn_delete_after_seconds": 8,
+    "announce_start": true,
+    "announce_end": true,
+    "current_state": null,
+    "enabled_chats": []
+  }
+}

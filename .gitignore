@@ -1,0 +1,35 @@
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Arquivos de Configuração Sensíveis e Chaves
+.env
+config.json
+.config_backup.json
+
+# Bancos de Dados SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Python Cache e Compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Logs e Arquivos Temporários
+*.log
+*.tmp
+*.bak
+*.zip
+
+# VS Code / IDEs
+.vscode/
+.idea/
