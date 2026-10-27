@@ -60,7 +60,6 @@ def generate_welcome_groups_selector(cfg: dict):
 
     kb.append([InlineKeyboardButton("◀ Voltar à Seleção de Grupos", callback_data="cfg:hub")])
     return text, InlineKeyboardMarkup(kb)
-    return text, InlineKeyboardMarkup(kb)
 
 
 def generate_sub_welcome(cfg: dict, target_group_id: str = "general"):
@@ -97,16 +96,15 @@ def generate_sub_welcome(cfg: dict, target_group_id: str = "general"):
     status_tag = "🟢 Ativado" if enabled else "🔴 Desativado"
 
     text = (
-        "💬 ══════════════════════ 💬\n"
-        f"   <b>BOAS-VINDAS: {html.escape(title_label)}</b>\n"
-        "💬 ══════════════════════ 💬\n\n"
+        "<b>BOAS-VINDAS</b>\n"
+        f"<b>{html.escape(title_label)}</b>\n\n"
         f"• <b>Status no Grupo:</b> <code>{status_tag}</code>\n"
-        f"• <b>Banner / Foto:</b> <code>{'🟢 Configurada' if has_photo else '⚪ Nenhuma'}</code>\n"
+        f"• <b>Banner / Foto:</b> <code>{'Configurada' if has_photo else 'Nenhuma'}</code>\n"
         f"• <b>Botões Interativos:</b> <code>{buttons_count} linha(s) configurada(s)</code>\n"
         f"• <b>Tempo de Auto-Apagar:</b> <code>{format_time_label(sec)}</code>\n"
         f"• <b>Limpar Aviso do Telegram:</b> <code>{'🟢 Sim' if del_srv else '🔴 Não'}</code>\n\n"
         f"📌 <b>Texto das Boas-Vindas:</b>\n<i>{html.escape(msg_preview)}</i>\n\n"
-        "👇 <i>Toque nas opções abaixo para personalizar:</i>"
+        "<i>Toque nas opções abaixo para personalizar:</i>"
     )
 
     kb = [

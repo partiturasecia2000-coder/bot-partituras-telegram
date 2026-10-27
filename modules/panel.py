@@ -142,55 +142,45 @@ def parse_time_string_to_seconds(text: str) -> int | None:
     return None
 
 # =====================================================================
+# =====================================================================
 # GERENCIAMENTO POR GRUPO (ESTILO GROUP HELP)
 # =====================================================================
 
 def generate_group_selector_hub(cfg: dict, user=None):
     """
-    Central de Gerenciamento Estilo Group Help:
-    Apresenta imediatamente os grupos vinculados para que o usuário escolha qual quer configurar.
-    Todas as funções (Boas-Vindas, Repetidas, Antispam) serão aplicadas diretamente ao grupo selecionado!
+    Central de Gerenciamento Estilo Group Help (Imagem 1):
+    Exibe os grupos disponíveis para configuração ou instruções se não houver.
     """
     groups = cfg.get("linked_groups", [])
     channels = cfg.get("linked_channels", [])
-    first_name = user.first_name if user else "Mestre"
 
     text = (
-        "🏛️ ══════════════════════ 🏛️\n"
-        "   <b>MAESTRO BOT — GERENCIAMENTO</b>\n"
-        "🏛️ ══════════════════════ 🏛️\n\n"
-        f"👋 Olá, <b>{html.escape(first_name)}</b>!\n"
-        "Selecione abaixo qual <b>Grupo</b> você deseja gerenciar.\n\n"
-        "💡 <i>Assim como no Group Help, todas as funções (Boas-Vindas, Mensagens Repetidas, Antispam, etc.) "
-        "serão aplicadas diretamente ao grupo que você escolher!</i>\n\n"
+        "<b>Gerenciar configurações</b>\n"
+        "👉 <i>Selecione o grupo cujas configurações você deseja alterar.</i>\n\n"
+        "Se um grupo que você é um admin não aparecer aqui:\n"
+        "• Envie /setgrupo no grupo e tente novamente.\n"
+        "• Verifique se o bot está adicionado como Administrador no grupo.\n"
+        "• Envie /config no grupo e pressione \"Abrir em chat privado\""
     )
 
     kb = []
-
     if groups:
-        text += f"👥 <b>SEUS GRUPOS VINCULADOS ({len(groups)}):</b>\n"
         for g in groups:
             gid = str(g.get("id"))
             gtit = g.get("title", f"Grupo {gid}")
-            text += f"• <b>{html.escape(gtit)}</b> (<code>{gid}</code>)\n"
-            kb.append([InlineKeyboardButton(f"👥 {gtit[:28]}", callback_data=f"cfg:grp:select:{gid}")])
-        text += "\n👇 <i>Toque em um grupo acima para gerenciar:</i>\n\n"
+            kb.append([InlineKeyboardButton(f"{gtit}", callback_data=f"cfg:grp:select:{gid}")])
     else:
-        text += (
-            "⚠️ <b>Nenhum grupo específico vinculado ainda.</b>\n"
-            "Para vincular um grupo, adicione o bot como Administrador no grupo "
-            "e envie o comando <code>/setgrupo</code> lá dentro!\n\n"
-        )
         kb.append([InlineKeyboardButton("➕ Como Vincular Novo Grupo", callback_data="cfg:grp:help_add")])
 
-    # Seção destacada de Canais e Transmissões (preservando o canal HC Sibelius e transmissões das 21h)
     num_chan = len(channels)
     kb.append([
-        InlineKeyboardButton(f"📢 Meus Canais & Transmissões (21h) [{num_chan}]", callback_data="cfg:channels:hub")
+        InlineKeyboardButton(f"📢 Canais & Transmissões (21h) [{num_chan}]", callback_data="cfg:channels:hub")
     ])
     kb.append([
-        InlineKeyboardButton("🎼 Acervo de Partituras", callback_data="acervo:menu"),
-        InlineKeyboardButton("❓ Ajuda & Comandos", callback_data="cfg:docs:main")
+        InlineKeyboardButton("🎼 Acervo de Partituras", callback_data="acervo:menu")
+    ])
+    kb.append([
+        InlineKeyboardButton("✅ Concluir", callback_data="cfg:close")
     ])
 
     return text, InlineKeyboardMarkup(kb)
@@ -198,67 +188,127 @@ def generate_group_selector_hub(cfg: dict, user=None):
 
 def generate_group_dashboard(cfg: dict, group_id: str):
     """
-    Painel Central do Grupo Selecionado (Estilo Group Help):
-    Concentra Boas-Vindas, Repetidas, Antispam, Flood, Regras e Whitelist para este grupo específico.
+    Painel Central do Grupo Selecionado - Página 1 (Estilo Group Help - Imagem 2):
+    Grid balanceado em 2 colunas:
+    - 📜 Regras | 🛡️ Anti-spam
+    - 💬 Boas-vindas | 🌊 Anti-flood
+    - 👋 Adeus | 🧠 Captcha
+    - 🔑 Bloquear Mídias | 🔞 Conteúdo Proibido
+    - ❗ Advertências | 🌙 Noturno
+    - 🔗 Bloquear Links | 🚪 Modo de Aprovação
+    - 🗑️ Apagar Mensagens (full width)
+    - 🚀 Testar Boas-Vindas (full width)
+    - ◀ Voltar | ✅ Concluir | Outros ▶
     """
     group_id = str(group_id)
     g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
     group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
 
-    # Garante que o grupo tenha sua cópia de boas-vindas
+    # Garante estrutura de boas-vindas para o grupo
     gw = cfg.setdefault("group_welcomes", {})
     if group_id not in gw:
         gw[group_id] = dict(cfg.get("welcome", {}))
         save_config(cfg)
-    w = gw[group_id]
-    w_on = w.get("enabled", True)
-    w_status = "🟢 Ativo" if w_on else "🔴 Off"
-
-    rep_cfg = cfg.get("antirepeat", {})
-    rep_on = rep_cfg.get("enabled", True)
-    rep_status = "🟢 Ativo" if rep_on else "🔴 Off"
-
-    spam_cfg = cfg.get("antispam", {})
-    links_on = spam_cfg.get("block_links", True)
-    links_status = "🟢 Bloqueando" if links_on else "🔴 Livre"
-
-    flood_cfg = cfg.get("antiflood", {})
-    flood_on = flood_cfg.get("enabled", True)
-    flood_status = "🟢 Ativo" if flood_on else "🔴 Off"
 
     text = (
-        "👥 ══════════════════════ 👥\n"
-        f"   <b>PAINEL DO GRUPO: {html.escape(group_title)}</b>\n"
-        "👥 ══════════════════════ 👥\n\n"
-        f"🏛️ <b>Grupo Ativo:</b> <code>{html.escape(group_title)}</code>\n"
-        f"🆔 <b>ID do Grupo:</b> <code>{group_id}</code>\n\n"
-        "⚙️ <b>Status das Ferramentas deste Grupo:</b>\n"
-        f"• <b>Boas-Vindas:</b> <code>{w_status}</code>\n"
-        f"• <b>Anti-Repetição (Spam):</b> <code>{rep_status}</code>\n"
-        f"• <b>Bloqueio de Links:</b> <code>{links_status}</code>\n"
-        f"• <b>Anti-Flood:</b> <code>{flood_status}</code>\n\n"
-        "👇 <i>Toque na função que deseja configurar para este grupo:</i>"
+        "<b>CONFIGURAÇÕES</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        "<i>Selecione a configuração que deseja alterar.</i>"
     )
 
     kb = [
         [
-            InlineKeyboardButton(f"👋 Boas-Vindas [{w_status}]", callback_data=f"cfg:welcome:cfg:{group_id}"),
-            InlineKeyboardButton(f"🔁 Repetidas [{rep_status}]", callback_data=f"cfg:grp:repeat:{group_id}")
+            InlineKeyboardButton("📜 Regras", callback_data=f"cfg:grp:rules:{group_id}"),
+            InlineKeyboardButton("🛡️ Anti-spam", callback_data=f"cfg:grp:antispam:{group_id}")
         ],
         [
-            InlineKeyboardButton("🛡️ Antispam & Links", callback_data=f"cfg:grp:antispam:{group_id}"),
-            InlineKeyboardButton("🌊 Anti-Flood", callback_data=f"cfg:grp:flood:{group_id}")
+            InlineKeyboardButton("💬 Boas-vindas", callback_data=f"cfg:welcome:cfg:{group_id}"),
+            InlineKeyboardButton("🌊 Anti-flood", callback_data=f"cfg:grp:flood:{group_id}")
         ],
         [
-            InlineKeyboardButton("📜 Regras do Grupo", callback_data=f"cfg:grp:rules:{group_id}"),
-            InlineKeyboardButton("🛡️ Membros Livres", callback_data=f"cfg:grp:whitelist:{group_id}")
+            InlineKeyboardButton("👋 Adeus", callback_data=f"cfg:grp:goodbye:{group_id}"),
+            InlineKeyboardButton("🧠 Captcha", callback_data=f"cfg:grp:captcha:{group_id}")
         ],
         [
-            InlineKeyboardButton("🚀 Testar Boas-Vindas no Grupo", callback_data=f"cfg:welcome:test:{group_id}")
+            InlineKeyboardButton("🔑 Bloquear Mídias", callback_data=f"cfg:grp:locks:{group_id}"),
+            InlineKeyboardButton("🔞 Conteúdo Proibido", callback_data=f"cfg:grp:nsfw:{group_id}")
         ],
         [
-            InlineKeyboardButton("🔄 Escolher Outro Grupo", callback_data="cfg:hub"),
-            InlineKeyboardButton("📢 Meus Canais (21h)", callback_data="cfg:channels:hub")
+            InlineKeyboardButton("❗ Advertências", callback_data=f"cfg:grp:warns:{group_id}"),
+            InlineKeyboardButton("🌙 Noturno", callback_data=f"cfg:grp:night:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("🔗 Bloquear Links", callback_data=f"cfg:grp:links:{group_id}"),
+            InlineKeyboardButton("🚪 Modo de Aprovação", callback_data=f"cfg:grp:join_req:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ Apagar Mensagens", callback_data=f"cfg:grp:autodel:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("🚀 Testar Boas-Vindas", callback_data=f"cfg:welcome:test:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("◀ Voltar", callback_data="cfg:hub"),
+            InlineKeyboardButton("✅ Concluir", callback_data="cfg:close"),
+            InlineKeyboardButton("Outros ▶", callback_data=f"cfg:grp:page2:{group_id}")
+        ]
+    ]
+
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_dashboard_page2(cfg: dict, group_id: str):
+    """
+    Página 2 de Configurações do Grupo (Estilo Group Help - Imagem 3 - Outros):
+    - 🔤 Palavras Proibidas
+    - ⏱️ Mensagens Repetidas
+    - 👥 Membros Livres (Whitelist)
+    - 🛡️ Links Permitidos (Google Drive)
+    - 🤖 Respostas Automáticas (Regex)
+    - 📢 Gerenciamento de Canais (21h)
+    - 🎼 Acervo de Partituras
+    - 📋 Registros (Logs) | 🕒 Fuso Horário
+    - ◀ Voltar | ✅ Concluir
+    """
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    text = (
+        "<b>CONFIGURAÇÕES</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        "<i>Selecione a configuração que deseja alterar.</i>"
+    )
+
+    kb = [
+        [
+            InlineKeyboardButton("🔤 Palavras Proibidas", callback_data=f"cfg:grp:badwords:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("⏱️ Mensagens Repetidas", callback_data=f"cfg:grp:repeat:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("👥 Membros Livres (Whitelist)", callback_data=f"cfg:grp:whitelist:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("🛡️ Links Permitidos (Google Drive)", callback_data=f"cfg:grp:allowed_links:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("🤖 Respostas Automáticas (Regex)", callback_data=f"cfg:grp:autoresponder:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("📢 Gerenciamento de Canais (21h)", callback_data="cfg:channels:hub")
+        ],
+        [
+            InlineKeyboardButton("🎼 Acervo de Partituras", callback_data="acervo:menu")
+        ],
+        [
+            InlineKeyboardButton("📋 Registros (Logs)", callback_data=f"cfg:grp:logs:{group_id}"),
+            InlineKeyboardButton("🕒 Fuso Horário", callback_data=f"cfg:grp:timezone:{group_id}")
+        ],
+        [
+            InlineKeyboardButton("◀ Voltar", callback_data=f"cfg:grp:select:{group_id}"),
+            InlineKeyboardButton("✅ Concluir", callback_data="cfg:close")
         ]
     ]
 
@@ -276,12 +326,10 @@ def generate_channels_and_transmissions_hub(cfg: dict):
     rec = cfg.get("recurring_messages", [])
 
     text = (
-        "📢 ══════════════════════ 📢\n"
-        "   <b>MEUS CANAIS & TRANSMISSÕES (21H)</b>\n"
-        "📢 ══════════════════════ 📢\n\n"
+        "<b>MEUS CANAIS & TRANSMISSÕES (21H)</b>\n\n"
         "Aqui ficam concentrados todos os seus canais e postagens programadas, "
         "completamente separados dos grupos!\n\n"
-        f"📡 <b>CANAIS VINCULADOS ({len(channels)}):</b>\n"
+        f"📡 <b>Canais Vinculados:</b> <code>{len(channels)}</code>\n"
     )
 
     if channels:
@@ -293,10 +341,10 @@ def generate_channels_and_transmissions_hub(cfg: dict):
         text += "<i>Nenhum canal vinculado. Use /setcanal dentro do canal para vinculá-lo!</i>\n"
 
     text += (
-        f"\n🗓️ <b>PROGRAMAÇÃO DE DISPAROS:</b>\n"
+        f"\n🗓️ <b>Programação de Disparos:</b>\n"
         f"• Transmissões Agendadas: <code>{len(sched)} ativa(s)</code>\n"
         f"• Postagens Recorrentes/Diárias (21h): <code>{len(rec)} configurada(s)</code>\n\n"
-        "👇 <i>Selecione o que deseja orquestrar nos seus canais:</i>"
+        "<i>Selecione o que deseja orquestrar nos seus canais:</i>"
     )
 
     kb = [
@@ -309,10 +357,356 @@ def generate_channels_and_transmissions_hub(cfg: dict):
             InlineKeyboardButton("📡 Gerenciar Lista de Canais", callback_data="cfg:chats:list")
         ],
         [
-            InlineKeyboardButton("👥 Voltar para Meus Grupos (Group Help)", callback_data="cfg:hub")
+            InlineKeyboardButton("◀ Voltar à Seleção de Grupos", callback_data="cfg:hub")
         ]
     ]
 
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_rules_menu(cfg: dict, group_id: str):
+    """Menu de Regras do Grupo selecionado."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    group_rules = cfg.get("group_rules", {})
+    rules_text = group_rules.get(group_id) or cfg.get("rules", "Nenhuma regra cadastrada ainda.")
+
+    preview = rules_text
+    if len(preview) > 280:
+        preview = preview[:280] + "..."
+
+    text = (
+        "<b>REGRAS DO GRUPO</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"📋 <b>Regras Atuais:</b>\n<blockquote>{html.escape(preview)}</blockquote>\n\n"
+        "💡 <b>Como alterar:</b>\n"
+        "• Toque no botão abaixo para digitar novas regras\n"
+        "• Ou envie <code>/setregras &lt;suas regras&gt;</code> no grupo\n\n"
+        "🔘 <b>Nas Boas-Vindas:</b> Adicione um botão com o link <code>[📜 Regras](regras)</code>"
+    )
+
+    kb = [
+        [InlineKeyboardButton("✍️ Alterar Regras", callback_data=f"cfg:rules:edit:{group_id}")],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_antispam_menu(cfg: dict, group_id: str):
+    """Menu de configuração de Antispam do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    spam_cfg = cfg.get("antispam", {})
+    blk_links = spam_cfg.get("block_links", True)
+    blk_invites = spam_cfg.get("block_telegram_invites", True)
+    blk_fwd = spam_cfg.get("block_forwards", True)
+
+    text = (
+        "<b>ANTI-SPAM</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        "<i>Toque para ativar ou desativar cada proteção:</i>\n\n"
+        f"• <b>Links Externos:</b> {'🟢 Bloqueando' if blk_links else '🔴 Permitidos'}\n"
+        f"• <b>Convites do Telegram:</b> {'🟢 Bloqueando' if blk_invites else '🔴 Permitidos'}\n"
+        f"• <b>Mensagens Encaminhadas:</b> {'🟢 Bloqueando' if blk_fwd else '🔴 Permitidas'}"
+    )
+
+    kb = [
+        [
+            InlineKeyboardButton(f"🔗 Links {'🟢 Bloqueando' if blk_links else '🔴 Permitido'}", callback_data=f"cfg:spam:togg_links:{group_id}"),
+            InlineKeyboardButton(f"📩 Convites {'🟢 Bloqueando' if blk_invites else '🔴 Permitido'}", callback_data=f"cfg:spam:togg_invites:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(f"⏩ Encaminhados {'🟢 Bloqueando' if blk_fwd else '🔴 Permitido'}", callback_data=f"cfg:spam:togg_fwd:{group_id}")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_flood_menu(cfg: dict, group_id: str):
+    """Menu de configuração de Anti-Flood do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    f = cfg.get("antiflood", {})
+    enabled = f.get("enabled", True)
+    max_m = f.get("max_messages", 5)
+    win = f.get("time_window_seconds", 5)
+    mute = f.get("mute_duration_minutes", 5)
+
+    text = (
+        "<b>ANTI-FLOOD</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status:</b> {'🟢 Ativado' if enabled else '🔴 Desativado'}\n"
+        f"• <b>Gatilho:</b> Mais de <code>{max_m}</code> mensagens em <code>{win}s</code>\n"
+        f"• <b>Penalidade:</b> Silêncio de <code>{mute}</code> minuto(s)\n\n"
+        "<i>Detecta disparos em massa e silencia o infrator temporariamente.</i>"
+    )
+
+    togg_lbl = "🔴 Desativar Anti-Flood" if enabled else "🟢 Ativar Anti-Flood"
+    kb = [
+        [InlineKeyboardButton(togg_lbl, callback_data=f"cfg:flood:togg:{group_id}")],
+        [
+            InlineKeyboardButton("⏱️ 1 min", callback_data=f"cfg:flood:mute:1:{group_id}"),
+            InlineKeyboardButton("⏱️ 5 min", callback_data=f"cfg:flood:mute:5:{group_id}"),
+            InlineKeyboardButton("⏱️ 15 min", callback_data=f"cfg:flood:mute:15:{group_id}")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_goodbye_menu(cfg: dict, group_id: str):
+    """Menu de Mensagem de Adeus/Despedida do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    gb = cfg.setdefault("goodbye", {
+        "enabled": False,
+        "message": "👋 Até logo, {name}! Sentiremos sua falta.",
+        "delete_after_seconds": 60
+    })
+    enabled = gb.get("enabled", False)
+    msg = gb.get("message", "👋 Até logo, {name}!")
+
+    text = (
+        "<b>MENSAGEM DE ADEUS (DESPEDIDA)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status:</b> {'🟢 Ativado' if enabled else '🔴 Desativado'}\n"
+        f"• <b>Texto Atual:</b>\n<blockquote>{html.escape(msg)}</blockquote>\n\n"
+        "<i>O bot envia uma mensagem carinhosa quando alguém deixa o grupo.</i>"
+    )
+
+    togg_lbl = "🔴 Desativar Adeus" if enabled else "🟢 Ativar Adeus"
+    kb = [
+        [InlineKeyboardButton(togg_lbl, callback_data=f"cfg:goodbye:toggle:{group_id}")],
+        [InlineKeyboardButton("📝 Alterar Texto de Despedida", callback_data=f"cfg:goodbye:edit:{group_id}")],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_captcha_menu(cfg: dict, group_id: str):
+    """Menu de Verificação Humana (Captcha) do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    cap = cfg.get("captcha", {})
+    enabled = cap.get("enabled", False)
+    timeout = cap.get("timeout_seconds", 180) // 60
+
+    text = (
+        "<b>VERIFICAÇÃO HUMANA (CAPTCHA)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status:</b> {'🟢 Ativado' if enabled else '🔴 Desativado'}\n"
+        f"• <b>Tempo Limite:</b> <code>{timeout} minuto(s)</code>\n"
+        f"• <b>Ação se falhar:</b> Expulsar (Kick) do grupo\n\n"
+        "<i>Protege contra contas falsas e robôs invasores. Novos membros precisam tocar no botão para liberar o envio de mensagens.</i>"
+    )
+
+    togg_lbl = "🔴 Desativar Captcha" if enabled else "🟢 Ativar Captcha"
+    kb = [
+        [InlineKeyboardButton(togg_lbl, callback_data=f"cfg:captcha:togg:{group_id}")],
+        [
+            InlineKeyboardButton("⏱️ 2 Minutos", callback_data=f"cfg:captcha:time:120:{group_id}"),
+            InlineKeyboardButton("⏱️ 3 Minutos", callback_data=f"cfg:captcha:time:180:{group_id}"),
+            InlineKeyboardButton("⏱️ 5 Minutos", callback_data=f"cfg:captcha:time:300:{group_id}")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_locks_menu(cfg: dict, group_id: str):
+    """Menu de Bloqueio de Mídias (Locks) do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    locks = cfg.setdefault("locks", {})
+    stk = locks.get("sticker", False)
+    gif = locks.get("gif", False)
+    aud = locks.get("audio", False)
+    vid = locks.get("video", False)
+    doc = locks.get("document", False)
+    pol = locks.get("poll", False)
+
+    text = (
+        "<b>BLOQUEIO DE MÍDIAS (LOCKS)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        "<i>Toque para alternar o bloqueio de cada tipo de mídia para membros comuns:</i>"
+    )
+
+    kb = [
+        [
+            InlineKeyboardButton(f"Stickers {'🔴 Bloqueado' if stk else '🟢 Livre'}", callback_data=f"cfg:locks:togg:sticker:{group_id}"),
+            InlineKeyboardButton(f"GIFs {'🔴 Bloqueado' if gif else '🟢 Livre'}", callback_data=f"cfg:locks:togg:gif:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(f"Áudios {'🔴 Bloqueado' if aud else '🟢 Livre'}", callback_data=f"cfg:locks:togg:audio:{group_id}"),
+            InlineKeyboardButton(f"Vídeos {'🔴 Bloqueado' if vid else '🟢 Livre'}", callback_data=f"cfg:locks:togg:video:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(f"Documentos {'🔴 Bloqueado' if doc else '🟢 Livre'}", callback_data=f"cfg:locks:togg:document:{group_id}"),
+            InlineKeyboardButton(f"Enquetes {'🔴 Bloqueado' if pol else '🟢 Livre'}", callback_data=f"cfg:locks:togg:poll:{group_id}")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_nsfw_menu(cfg: dict, group_id: str):
+    """Menu de Conteúdo Proibido / NSFW do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    nsfw = cfg.setdefault("nsfw_filter", {"enabled": True})
+    enabled = nsfw.get("enabled", True)
+
+    text = (
+        "<b>CONTEÚDO PROIBIDO & NSFW</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status da Proteção:</b> {'🟢 Ativada' if enabled else '🔴 Desativada'}\n"
+        "• <b>Ação:</b> Apaga a mensagem e notifica o usuário imediatamente.\n\n"
+        "<i>Mantém o grupo saudável, seguro e em harmonia para a comunidade.</i>"
+    )
+
+    togg_lbl = "🔴 Desativar Proteção" if enabled else "🟢 Ativar Proteção"
+    kb = [
+        [InlineKeyboardButton(togg_lbl, callback_data=f"cfg:nsfw:togg:{group_id}")],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_warns_menu(cfg: dict, group_id: str):
+    """Menu de Advertências (Warns) do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    text = (
+        "<b>SISTEMA DE ADVERTÊNCIAS (WARNS)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        "• <b>Limite de Advertências:</b> <code>3 advertências</code>\n"
+        "• <b>Punição ao atingir o limite:</b> <code>🔨 Banimento imediato</code>\n\n"
+        "💡 <b>Comandos de moderação no grupo:</b>\n"
+        "• <code>/warn [motivo]</code> — Aplica advertência respondendo ao membro\n"
+        "• <code>/unwarn</code> — Remove a advertência do membro\n"
+        "• <code>/warns</code> — Consulta advertências acumuladas"
+    )
+
+    kb = [
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_nightmode_menu(cfg: dict, group_id: str):
+    """Menu de Modo Noturno do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    nm = cfg.setdefault("night_mode", {
+        "enabled": False,
+        "start": "23:00",
+        "end": "07:00",
+        "announce_start": True,
+        "announce_end": True
+    })
+    nm_on = nm.get("enabled", False)
+    s = nm.get("start", "23:00")
+    e = nm.get("end", "07:00")
+
+    text = (
+        "<b>MODO NOTURNO (SILÊNCIO)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status:</b> {'🟢 Ativado' if nm_on else '🔴 Desativado'}\n"
+        f"• <b>Horário de Silêncio:</b> das <code>{s}</code> às <code>{e}</code>\n"
+        f"• <b>Avisos no Grupo:</b> Mensagens de início e término do silêncio\n\n"
+        "<i>Durante a noite, apenas administradores podem enviar mensagens no grupo.</i>"
+    )
+
+    togg_lbl = "🔴 Desativar Noturno" if nm_on else "🟢 Ativar Noturno"
+    kb = [
+        [InlineKeyboardButton(togg_lbl, callback_data=f"cfg:night:togg:{group_id}")],
+        [
+            InlineKeyboardButton("🚀 Testar Aviso Início", callback_data="cfg:test:nightmode_start"),
+            InlineKeyboardButton("🚀 Testar Aviso Fim", callback_data="cfg:test:nightmode_end")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_join_req_menu(cfg: dict, group_id: str):
+    """Menu de Modo de Aprovação (Join Requests) do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    jr = cfg.setdefault("join_requests", {"auto_approve": True, "send_welcome_dm": True})
+    auto_app = jr.get("auto_approve", True)
+    send_dm = jr.get("send_welcome_dm", True)
+
+    text = (
+        "<b>MODO DE APROVAÇÃO (JOIN REQUESTS)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Auto-Aprovação:</b> {'🟢 Ativada' if auto_app else '🔴 Desativada'}\n"
+        f"• <b>Boas-Vindas no Privado:</b> {'🟢 Sim' if send_dm else '🔴 Não'}\n\n"
+        "<i>Quando ativado, novos membros com solicitação pendente são aprovados automaticamente pelo bot.</i>"
+    )
+
+    togg_app = "🔴 Desativar Auto-Aprovação" if auto_app else "🟢 Ativar Auto-Aprovação"
+    togg_dm = "🔕 Desativar Mensagem Privada" if send_dm else "🔔 Ativar Mensagem Privada"
+    kb = [
+        [InlineKeyboardButton(togg_app, callback_data=f"cfg:joinreq:togg_app:{group_id}")],
+        [InlineKeyboardButton(togg_dm, callback_data=f"cfg:joinreq:togg_dm:{group_id}")],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_group_autodel_menu(cfg: dict, group_id: str):
+    """Menu de Apagar Mensagens e Comandos do grupo."""
+    group_id = str(group_id)
+    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
+    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
+
+    cc = cfg.get("command_cleanup", {})
+    admin_del = cc.get("delete_admin_commands", True)
+    user_del = cc.get("delete_non_admin_commands", True)
+    w = get_welcome_for_chat(cfg, group_id)
+    del_srv = w.get("delete_service_messages", True)
+
+    text = (
+        "<b>APAGAR MENSAGENS & LIMPEZA</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Apagar Comandos de Admins (/ban, /falar...):</b> {'🟢 Sim' if admin_del else '🔴 Não'}\n"
+        f"• <b>Apagar Comandos Não Autorizados de Membros:</b> {'🟢 Sim' if user_del else '🔴 Não'}\n"
+        f"• <b>Apagar Mensagens de Entrada/Saída do Telegram:</b> {'🟢 Sim' if del_srv else '🔴 Não'}\n\n"
+        "<i>Mantém o chat limpo apagando comandos e mensagens de serviço automaticamente.</i>"
+    )
+
+    kb = [
+        [
+            InlineKeyboardButton(f"Comandos Admin: {'🟢' if admin_del else '🔴'}", callback_data=f"cfg:autodel:togg_admin:{group_id}"),
+            InlineKeyboardButton(f"Comandos Membros: {'🟢' if user_del else '🔴'}", callback_data=f"cfg:autodel:togg_user:{group_id}")
+        ],
+        [
+            InlineKeyboardButton(f"Entradas/Saídas Telegram: {'🟢' if del_srv else '🔴'}", callback_data=f"cfg:autodel:togg_srv:{group_id}")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+    ]
     return text, InlineKeyboardMarkup(kb)
 
 
@@ -329,15 +723,12 @@ def generate_group_repeat_menu(cfg: dict, group_id: str):
     status_str = "🟢 Ativado" if enabled else "🔴 Desativado"
 
     text = (
-        "🔁 ══════════════════════ 🔁\n"
-        f"   <b>MENSAGENS REPETIDAS: {html.escape(group_title)}</b>\n"
-        "🔁 ══════════════════════ 🔁\n\n"
-        "O sistema anti-repetição impede que usuários façam spam enviando a mesma mensagem repetidamente no grupo.\n\n"
-        f"• <b>Status no Grupo:</b> <code>{status_str}</code>\n"
-        f"• <b>Limite de Repetições:</b> <code>{max_rep} mensagem(ns) consecutivas</code>\n"
-        f"• <b>Janela de Análise:</b> <code>{win_hours} hora(s)</code>\n"
-        f"• <b>Ação ao Detectar:</b> <code>Apaga a mensagem e avisa o usuário (auto-deletado em 8s)</code>\n\n"
-        "👇 <i>Ajuste os parâmetros abaixo:</i>"
+        "<b>MENSAGENS REPETIDAS (ANTI-REPEAT)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
+        f"• <b>Status:</b> <code>{status_str}</code>\n"
+        f"• <b>Limite de Repetições:</b> <code>{max_rep} consecutivas</code>\n"
+        f"• <b>Janela de Análise:</b> <code>{win_hours} hora(s)</code>\n\n"
+        "<i>Impede que usuários poluam o chat repetindo a mesma mensagem várias vezes.</i>"
     )
 
     togg_label = "🔴 Desativar Anti-Repetição" if enabled else "🟢 Ativar Anti-Repetição"
@@ -353,81 +744,9 @@ def generate_group_repeat_menu(cfg: dict, group_id: str):
             InlineKeyboardButton("⏱️ Janela: 2h", callback_data=f"cfg:repeat:win:2:{group_id}"),
             InlineKeyboardButton("⏱️ Janela: 6h", callback_data=f"cfg:repeat:win:6:{group_id}")
         ],
-        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:page2:{group_id}")]
     ]
 
-    return text, InlineKeyboardMarkup(kb)
-
-
-def generate_group_antispam_menu(cfg: dict, group_id: str):
-    """Menu de configuração de Antispam & Links do grupo."""
-    group_id = str(group_id)
-    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
-    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
-
-    spam_cfg = cfg.get("antispam", {})
-    enabled = spam_cfg.get("enabled", True)
-    blk_links = spam_cfg.get("block_links", True)
-    blk_invites = spam_cfg.get("block_telegram_invites", True)
-    blk_fwd = spam_cfg.get("block_forwards", True)
-
-    allowed_domains = spam_cfg.get("allowed_domains", [])
-    banned_words = spam_cfg.get("banned_words", [])
-
-    text = (
-        "🛡️ ══════════════════════ 🛡️\n"
-        f"   <b>ANTISPAM & LINKS: {html.escape(group_title)}</b>\n"
-        "🛡️ ══════════════════════ 🛡️\n\n"
-        f"• <b>Módulo Antispam:</b> {'🟢 Ativo' if enabled else '🔴 Desativado'}\n"
-        f"• <b>Bloqueio de Links da Web:</b> {'🟢 Ativado' if blk_links else '🔴 Desativado'}\n"
-        f"• <b>Bloqueio de Convites do Telegram:</b> {'🟢 Ativado' if blk_invites else '🔴 Desativado'}\n"
-        f"• <b>Bloqueio de Mensagens Encaminhadas:</b> {'🟢 Ativado' if blk_fwd else '🔴 Desativado'}\n"
-        f"• <b>Links Permitidos na Whitelist:</b> <code>{len(allowed_domains)} domínio(s)</code> (Google Drive, Docs)\n"
-        f"• <b>Palavras Proibidas:</b> <code>{len(banned_words)} termo(s)</code>\n\n"
-        "👇 <i>Toque para alternar ou configurar:</i>"
-    )
-
-    kb = [
-        [
-            InlineKeyboardButton(f"🔗 Bloquear Links {'🔴 Off' if blk_links else '🟢 On'}", callback_data=f"cfg:spam:togg_links:{group_id}"),
-            InlineKeyboardButton(f"📩 Bloquear Convites {'🔴 Off' if blk_invites else '🟢 On'}", callback_data=f"cfg:spam:togg_invites:{group_id}")
-        ],
-        [
-            InlineKeyboardButton(f"⏩ Bloquear Forwards {'🔴 Off' if blk_fwd else '🟢 On'}", callback_data=f"cfg:spam:togg_fwd:{group_id}"),
-            InlineKeyboardButton("🔤 Palavras Proibidas", callback_data="cfg:sub:banned")
-        ],
-        [
-            InlineKeyboardButton("🛡️ Gerenciar Links Permitidos (Drive)", callback_data="cfg:sub:whitelist_hub")
-        ],
-        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
-    ]
-
-    return text, InlineKeyboardMarkup(kb)
-
-
-def generate_group_rules_menu(cfg: dict, group_id: str):
-    """Menu de Regras do Grupo selecionado."""
-    group_id = str(group_id)
-    g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == group_id), None)
-    group_title = g_item.get("title", f"Grupo {group_id}") if g_item else f"Grupo {group_id}"
-
-    rules_text = cfg.get("rules", "<i>Nenhuma regra cadastrada ainda.</i>")
-
-    text = (
-        "📜 ══════════════════════ 📜\n"
-        f"   <b>REGRAS DO GRUPO: {html.escape(group_title)}</b>\n"
-        "📜 ══════════════════════ 📜\n\n"
-        f"📋 <b>Regras Atuais:</b>\n<blockquote>{html.escape(rules_text)}</blockquote>\n\n"
-        "💡 <b>Como alterar as regras:</b>\n"
-        "• Digite <code>/setregras &lt;suas regras&gt;</code> no chat\n"
-        "• Ou responda a qualquer mensagem de regras com <code>/setregras</code>\n\n"
-        "🔘 <b>No botão de boas-vindas:</b> Use a tag <code>[📜 Regras](regras)</code>"
-    )
-
-    kb = [
-        [InlineKeyboardButton("✍️ Alterar Regras (/setregras)", callback_data=f"cfg:rules:edit:{group_id}")],
-        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
-    ]
     return text, InlineKeyboardMarkup(kb)
 
 
@@ -440,9 +759,8 @@ def generate_group_whitelist_menu(cfg: dict, group_id: str):
     w_users = cfg.get("whitelist_users", [])
 
     text = (
-        "🛡️ ══════════════════════ 🛡️\n"
-        f"   <b>MEMBROS LIVRES: {html.escape(group_title)}</b>\n"
-        "🛡️ ══════════════════════ 🛡️\n\n"
+        "<b>MEMBROS LIVRES (WHITELIST)</b>\n"
+        f"Grupo: <b>{html.escape(group_title)}</b>\n\n"
         "Membros livres são isentos de restrições de links, flood e mensagens repetidas.\n\n"
         f"👥 <b>Total de Membros Livres:</b> <code>{len(w_users)} usuário(s)</code>\n\n"
         "💡 <b>Como adicionar membro livre:</b>\n"
@@ -452,7 +770,7 @@ def generate_group_whitelist_menu(cfg: dict, group_id: str):
 
     kb = [
         [InlineKeyboardButton("📋 Ver Lista de Usuários Livres", callback_data="cfg:sub:wl_users")],
-        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{group_id}")]
+        [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:page2:{group_id}")]
     ]
     return text, InlineKeyboardMarkup(kb)
 
@@ -2870,6 +3188,24 @@ class InteractivePanelHandler:
             )
             return True
 
+        elif action == "set_goodbye":
+            if not msg.text:
+                await msg.reply_text("⚠️ Envie um texto válido para a despedida ou /cancelar.")
+                return True
+            new_gb = msg.text.strip()
+            cfg.setdefault("goodbye", {})["message"] = new_gb
+            save_config(cfg)
+            del self.pending_inputs[user.id]
+            gid = state.get("group_id", "general")
+            await msg.reply_text(
+                f"✅ <b>Mensagem de despedida atualizada com sucesso!</b>\n\n<blockquote>{html.escape(new_gb)}</blockquote>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{gid}")]
+                ])
+            )
+            return True
+
         # -------------------------------------------------------------
         # 2. TEXTO / FOTO / BOTÕES DE MENSAGEM REPETIDA (CRONOGRAMA)
         # -------------------------------------------------------------
@@ -3913,11 +4249,22 @@ class InteractivePanelHandler:
                 await query.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
             return
 
-        # 2. Painel Central do Grupo Selecionado
+        # 2. Painel Central do Grupo Selecionado (Página 1 - Group Help)
         if data.startswith("cfg:grp:select:"):
             gid = data.split(":")[-1]
             await query.answer()
             text, markup = generate_group_dashboard(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                await query.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            return
+
+        # Página 2 de Configurações do Grupo (Outros ▶)
+        if data.startswith("cfg:grp:page2:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_dashboard_page2(cfg, gid)
             try:
                 await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
             except Exception:
@@ -4045,28 +4392,7 @@ class InteractivePanelHandler:
         if data.startswith("cfg:grp:flood:"):
             gid = data.split(":")[-1]
             await query.answer()
-            f = cfg.get("antiflood", {})
-            enabled = f.get("enabled", True)
-            max_m = f.get("max_messages", 5)
-            win = f.get("time_window_seconds", 5)
-            mute = f.get("mute_duration_minutes", 5)
-            g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == gid), None)
-            gtit = g_item.get("title", f"Grupo {gid}") if g_item else f"Grupo {gid}"
-
-            text = (
-                "🌊 ══════════════════════ 🌊\n"
-                f"   <b>ANTI-FLOOD: {html.escape(gtit)}</b>\n"
-                "🌊 ══════════════════════ 🌊\n\n"
-                f"• <b>Status no Grupo:</b> {'🟢 Ativado' if enabled else '🔴 Desativado'}\n"
-                f"• <b>Gatilho:</b> Mais de <code>{max_m}</code> mensagens em <code>{win}s</code>\n"
-                f"• <b>Penalidade:</b> Silêncio de <code>{mute}</code> minuto(s)\n\n"
-                "👇 <i>Ajuste a proteção do grupo:</i>"
-            )
-            markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔴 Desativar" if enabled else "🟢 Ativar", callback_data=f"cfg:flood:togg:{gid}")],
-                [InlineKeyboardButton(f"⏱️ Duração do Silêncio: {mute} min ▾", callback_data=f"cfg:cycle:flood_mute")],
-                [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{gid}")]
-            ])
+            text, markup = generate_group_flood_menu(cfg, gid)
             try:
                 await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
             except Exception:
@@ -4080,35 +4406,350 @@ class InteractivePanelHandler:
             save_config(cfg)
             st = "Ativado" if not cur else "Desativado"
             await query.answer(f"Anti-Flood: {st}!", show_alert=True)
-            # Recarrega menu de flood
-            f = cfg.get("antiflood", {})
-            enabled = f.get("enabled", True)
-            max_m = f.get("max_messages", 5)
-            win = f.get("time_window_seconds", 5)
-            mute = f.get("mute_duration_minutes", 5)
-            g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == gid), None)
-            gtit = g_item.get("title", f"Grupo {gid}") if g_item else f"Grupo {gid}"
-            text = (
-                "🌊 ══════════════════════ 🌊\n"
-                f"   <b>ANTI-FLOOD: {html.escape(gtit)}</b>\n"
-                "🌊 ══════════════════════ 🌊\n\n"
-                f"• <b>Status no Grupo:</b> {'🟢 Ativado' if enabled else '🔴 Desativado'}\n"
-                f"• <b>Gatilho:</b> Mais de <code>{max_m}</code> mensagens em <code>{win}s</code>\n"
-                f"• <b>Penalidade:</b> Silêncio de <code>{mute}</code> minuto(s)\n\n"
-                "👇 <i>Ajuste a proteção do grupo:</i>"
-            )
-            markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔴 Desativar" if enabled else "🟢 Ativar", callback_data=f"cfg:flood:togg:{gid}")],
-                [InlineKeyboardButton(f"⏱️ Duração do Silêncio: {mute} min ▾", callback_data=f"cfg:cycle:flood_mute")],
-                [InlineKeyboardButton("◀ Voltar ao Painel do Grupo", callback_data=f"cfg:grp:select:{gid}")]
-            ])
+            text, markup = generate_group_flood_menu(cfg, gid)
             try:
                 await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
             except Exception:
                 pass
             return
 
-        # 7. Regras do Grupo
+        if data.startswith("cfg:flood:mute:"):
+            parts = data.split(":")
+            mute_m = int(parts[3])
+            gid = parts[4]
+            cfg.setdefault("antiflood", {})["mute_duration_minutes"] = mute_m
+            save_config(cfg)
+            await query.answer(f"Duração de silêncio: {mute_m} min!", show_alert=True)
+            text, markup = generate_group_flood_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 7. Adeus / Despedida do Grupo
+        if data.startswith("cfg:grp:goodbye:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_goodbye_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:goodbye:toggle:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("goodbye", {}).get("enabled", False)
+            cfg["goodbye"]["enabled"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Mensagem de Adeus: {st}!", show_alert=True)
+            text, markup = generate_group_goodbye_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:goodbye:edit:"):
+            gid = data.split(":")[-1]
+            self.pending_inputs[user.id] = {"action": "set_goodbye", "group_id": gid, "chat_id": chat.id}
+            await query.answer()
+            prompt = (
+                "👋 <b>Definir Texto de Despedida (Adeus):</b>\n\n"
+                "Envie a mensagem agora (ou digite /cancelar):\n\n"
+                "💡 <i>Você pode usar {name} para o nome e {group} para o grupo.</i>"
+            )
+            await chat.send_message(prompt, parse_mode=ParseMode.HTML)
+            return
+
+        # 8. Captcha do Grupo
+        if data.startswith("cfg:grp:captcha:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_captcha_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:captcha:togg:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("captcha", {}).get("enabled", False)
+            cfg["captcha"]["enabled"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Captcha: {st}!", show_alert=True)
+            text, markup = generate_group_captcha_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:captcha:time:"):
+            parts = data.split(":")
+            sec = int(parts[3])
+            gid = parts[4]
+            cfg.setdefault("captcha", {})["timeout_seconds"] = sec
+            save_config(cfg)
+            await query.answer(f"Tempo limite: {sec // 60} minuto(s)!", show_alert=True)
+            text, markup = generate_group_captcha_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 9. Bloquear Mídias (Locks) do Grupo
+        if data.startswith("cfg:grp:locks:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_locks_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:locks:togg:"):
+            parts = data.split(":")
+            l_type = parts[3]
+            gid = parts[4]
+            locks = cfg.setdefault("locks", {})
+            cur = locks.get(l_type, False)
+            locks[l_type] = not cur
+            save_config(cfg)
+            st = "Bloqueado" if not cur else "Liberado"
+            await query.answer(f"{l_type.capitalize()}: {st}!", show_alert=True)
+            text, markup = generate_group_locks_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 10. Conteúdo Proibido / NSFW
+        if data.startswith("cfg:grp:nsfw:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_nsfw_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:nsfw:togg:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("nsfw_filter", {}).get("enabled", True)
+            cfg["nsfw_filter"]["enabled"] = not cur
+            save_config(cfg)
+            st = "Ativada" if not cur else "Desativada"
+            await query.answer(f"Proteção NSFW: {st}!", show_alert=True)
+            text, markup = generate_group_nsfw_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 11. Advertências (Warns)
+        if data.startswith("cfg:grp:warns:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_warns_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 12. Noturno (Silêncio Noturno)
+        if data.startswith("cfg:grp:night:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_nightmode_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:night:togg:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("night_mode", {}).get("enabled", False)
+            cfg["night_mode"]["enabled"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Modo Noturno: {st}!", show_alert=True)
+            text, markup = generate_group_nightmode_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 13. Bloquear Links (Toggle Direto na Página 1)
+        if data.startswith("cfg:grp:links:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("antispam", {}).get("block_links", True)
+            cfg["antispam"]["block_links"] = not cur
+            save_config(cfg)
+            st = "Bloqueando links externos" if not cur else "Links externos liberados"
+            await query.answer(f"Status: {st}!", show_alert=True)
+            text, markup = generate_group_dashboard(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 14. Modo de Aprovação (Join Requests)
+        if data.startswith("cfg:grp:join_req:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_join_req_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:joinreq:togg_app:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("join_requests", {}).get("auto_approve", True)
+            cfg["join_requests"]["auto_approve"] = not cur
+            save_config(cfg)
+            st = "Ativada" if not cur else "Desativada"
+            await query.answer(f"Auto-Aprovação: {st}!", show_alert=True)
+            text, markup = generate_group_join_req_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:joinreq:togg_dm:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("join_requests", {}).get("send_welcome_dm", True)
+            cfg["join_requests"]["send_welcome_dm"] = not cur
+            save_config(cfg)
+            st = "Ativada" if not cur else "Desativada"
+            await query.answer(f"Mensagem Privada: {st}!", show_alert=True)
+            text, markup = generate_group_join_req_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 15. Apagar Mensagens & Limpeza
+        if data.startswith("cfg:grp:autodel:"):
+            gid = data.split(":")[-1]
+            await query.answer()
+            text, markup = generate_group_autodel_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:autodel:togg_admin:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("command_cleanup", {}).get("delete_admin_commands", True)
+            cfg["command_cleanup"]["delete_admin_commands"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Apagar Comandos Admin: {st}!", show_alert=True)
+            text, markup = generate_group_autodel_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:autodel:togg_user:"):
+            gid = data.split(":")[-1]
+            cur = cfg.setdefault("command_cleanup", {}).get("delete_non_admin_commands", True)
+            cfg["command_cleanup"]["delete_non_admin_commands"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Apagar Comandos Membros: {st}!", show_alert=True)
+            text, markup = generate_group_autodel_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:autodel:togg_srv:"):
+            gid = data.split(":")[-1]
+            w = cfg.setdefault("group_welcomes", {}).setdefault(gid, dict(cfg.get("welcome", {})))
+            cur = w.get("delete_service_messages", True)
+            w["delete_service_messages"] = not cur
+            save_config(cfg)
+            st = "Ativado" if not cur else "Desativado"
+            await query.answer(f"Apagar Mensagens de Serviço: {st}!", show_alert=True)
+            text, markup = generate_group_autodel_menu(cfg, gid)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        # 16. Submenus da Página 2 (Outros)
+        if data.startswith("cfg:grp:badwords:"):
+            await query.answer()
+            text, markup = generate_sub_banned(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:grp:allowed_links:"):
+            await query.answer()
+            text, markup = generate_allowed_links_page(cfg, page=1)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:grp:autoresponder:"):
+            gid = data.split(":")[-1]
+            g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == gid), None)
+            gtit = g_item.get("title", f"Grupo {gid}") if g_item else f"Grupo {gid}"
+            await query.answer()
+            text, markup = generate_auto_responder_list(gtit, cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:grp:logs:"):
+            await query.answer()
+            text, markup = generate_sub_logs(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        if data.startswith("cfg:grp:timezone:"):
+            await query.answer()
+            text, markup = generate_sub_timezone(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        # 17. Regras do Grupo
         if data.startswith("cfg:grp:rules:"):
             gid = data.split(":")[-1]
             await query.answer()
@@ -4131,7 +4772,7 @@ class InteractivePanelHandler:
             await chat.send_message(prompt, parse_mode=ParseMode.HTML)
             return
 
-        # 8. Whitelist do Grupo
+        # 18. Whitelist do Grupo
         if data.startswith("cfg:grp:whitelist:"):
             gid = data.split(":")[-1]
             await query.answer()
@@ -4171,7 +4812,7 @@ class InteractivePanelHandler:
             return
 
         # Acervo Musical (Inline)
-        if data == "cfg:sub:acervo":
+        if data in ("cfg:sub:acervo", "acervo:menu"):
             await query.answer()
             from modules.inline_acervo import generate_acervo_dashboard_text_and_kb
             text, markup = generate_acervo_dashboard_text_and_kb()
