@@ -446,10 +446,11 @@ async def handle_conversation_menu_button(update: Update, context: ContextTypes.
     text = msg.text.strip()
     cfg = load_config()
 
-    if text in ("🎛️ Painel de Controle", "👥 Meus Grupos"):
-        from modules.panel import generate_group_selector_hub
-        t, m = generate_group_selector_hub(cfg, user)
-        await msg.reply_text(t, reply_markup=m, parse_mode=ParseMode.HTML)
+    if text == "🎛️ Painel de Controle":
+        from modules.panel import generate_page_1
+        title = chat.title or "Privado"
+        t, m = generate_page_1(title, cfg)
+        await msg.reply_text(t, reply_markup=m, parse_mode=ParseMode.MARKDOWN)
         return True
 
     if text == "🎼 Acervo de Partituras":
@@ -459,8 +460,14 @@ async def handle_conversation_menu_button(update: Update, context: ContextTypes.
         return True
 
     if text == "📢 Meus Canais":
-        from modules.panel import generate_channels_and_transmissions_hub
-        t, m = generate_channels_and_transmissions_hub(cfg)
+        from modules.panel import generate_chats_list_page
+        t, m = generate_chats_list_page(cfg)
+        await msg.reply_text(t, reply_markup=m, parse_mode=ParseMode.MARKDOWN)
+        return True
+
+    if text == "👥 Meus Grupos":
+        from modules.welcome_ui import generate_welcome_groups_selector
+        t, m = generate_welcome_groups_selector(cfg)
         await msg.reply_text(t, reply_markup=m, parse_mode=ParseMode.HTML)
         return True
 

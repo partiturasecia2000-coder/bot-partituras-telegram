@@ -385,21 +385,10 @@ class AdminCommandHandler:
             from modules.whitelist import get_conversation_reply_keyboard
             reply_kb = get_conversation_reply_keyboard()
 
-            # Suporte a deep-linking: /start regras, /start tutorial ou /start grp_ID
+            # Suporte a deep-linking: /start regras ou /start tutorial
             if context.args:
                 arg = context.args[0].lower()
-                if arg.startswith("grp_"):
-                    gid = context.args[0][4:]
-                    cfg = load_config()
-                    from modules.panel import generate_group_dashboard
-                    t, m = generate_group_dashboard(cfg, gid)
-                    try:
-                        await update.effective_message.reply_text(t, reply_markup=m, parse_mode=ParseMode.HTML)
-                    except Exception:
-                        await update.effective_message.reply_text(t, reply_markup=m)
-                    return
-
-                elif arg in ("regras", "rules"):
+                if arg in ("regras", "rules"):
                     cfg = load_config()
                     r_text = cfg.get("rules", "Não há regras definidas.")
                     try:
@@ -453,13 +442,22 @@ class AdminCommandHandler:
                         await update.effective_message.reply_text(tut_caption, parse_mode=ParseMode.HTML, reply_markup=reply_kb)
                     return
 
-            cfg = load_config()
-            from modules.panel import generate_group_selector_hub
-            hub_text, hub_markup = generate_group_selector_hub(cfg, user)
+            welcome_text = (
+                f"👋 Olá, <b>{html.escape(user.first_name)}</b>!\n\n"
+                "Eu sou o <b>Maestro Bot</b>, orquestrador e moderador dos seus grupos e canais musicais!\n\n"
+                "🎹 <b>Menu em Botões na Área de Conversa Ativado:</b>\n"
+                "Toque nos botões fixos abaixo para acessar o painel, acervo, canais e listas brancas a qualquer momento.\n\n"
+                "🛡️ <b>Principais Funções:</b>\n"
+                "• 🎼 Acervo Global com mais de 17.000 partituras\n"
+                "• 👋 Boas-vindas personalizadas por grupo\n"
+                "• 🛡️ Whitelist de Usuários Livres e Links Permitidos (Google Drive)\n"
+                "• 🚫 Proteção Antispam, Anti-Flood e Anti-Repetição\n"
+                "• 📢 Transmissões e mensagens programadas"
+            )
             try:
-                await update.effective_message.reply_text(hub_text, parse_mode=ParseMode.HTML, reply_markup=hub_markup)
+                await update.effective_message.reply_text(welcome_text, parse_mode=ParseMode.HTML, reply_markup=reply_kb)
             except Exception:
-                await update.effective_message.reply_text(hub_text, reply_markup=hub_markup)
+                await update.effective_message.reply_text(welcome_text, reply_markup=reply_kb)
         else:
             cfg = load_config()
             if cfg.get("main_group_id") != chat.id:
