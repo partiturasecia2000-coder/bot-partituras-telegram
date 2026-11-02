@@ -30,7 +30,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from telegram import Update
-from telegram.constants import ChatMemberStatus
+from telegram.constants import ChatMemberStatus, ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,

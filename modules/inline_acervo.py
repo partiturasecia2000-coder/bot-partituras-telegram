@@ -207,15 +207,59 @@ class AcervoDatabase:
 
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
+        self._check_integrity()
         self._init_db()
 
+    def _heal_db(self):
+        """Auto-recupera e recria o banco limpo caso o arquivo SQLite esteja corrompido ou malformado."""
+        logger.warning("[AcervoDatabase] Banco corrompido/malformado detectado! Limpando arquivos residuais para auto-recuperação...")
+        for ext in ["", "-wal", "-shm", "-journal"]:
+            p = Path(str(self.db_path) + ext)
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception as e_un:
+                    logger.warning(f"Não foi possível remover {p}: {e_un}")
+
+    def _check_integrity(self):
+        """Checa se o arquivo existente está íntegro na inicialização."""
+        if not self.db_path.exists():
+            return
+        is_corrupt = False
+        try:
+            conn = sqlite3.connect(str(self.db_path), timeout=5.0)
+            cur = conn.cursor()
+            cur.execute("PRAGMA integrity_check;")
+            res = cur.fetchone()
+            conn.close()
+            if not res or res[0] != "ok":
+                is_corrupt = True
+        except Exception as e:
+            logger.warning(f"[AcervoDatabase] Integrity check falhou ({e}). Auto-recuperando...")
+            is_corrupt = True
+
+        if is_corrupt:
+            self._heal_db()
+
     def _get_connection(self):
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        # Habilita WAL mode para alta performance e concorrência sem bloqueio
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        try:
+            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            # Em containers/Discloud, DELETE mode é imune a descompassos com -wal e -shm
+            conn.execute("PRAGMA journal_mode=DELETE;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            return conn
+        except sqlite3.DatabaseError as e:
+            if "malformed" in str(e).lower() or "corrupt" in str(e).lower():
+                logger.error(f"[AcervoDatabase] Conexão falhou por banco malformado ({e}). Executando auto-recuperação...")
+                self._heal_db()
+                self._init_db()
+                conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=DELETE;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+                return conn
+            raise
 
     def _init_db(self):
         with self._get_connection() as conn:
@@ -376,6 +420,66 @@ class AcervoDatabase:
                 conn.commit()
             return inserted_or_updated
         except Exception as e:
+            if "malformed" in str(e).lower() or "corrupt" in str(e).lower():
+                logger.error(f"[AcervoDatabase] Erro malformed durante inserção de lote: {e}. Auto-recriando banco...")
+                self._heal_db()
+                self._init_db()
+                try:
+                    with self._get_connection() as conn:
+                        retry_count = 0
+                        for item in items:
+                            channel_id = normalize_chat_id(item.get("channel_id", 0))
+                            file_name = item.get("file_name", "")
+                            caption = item.get("caption", "")
+                            title = item.get("title") or clean_file_title(file_name, caption)
+                            file_size = item.get("file_size", 0)
+                            size_str = format_bytes(file_size)
+                            channel_title = item.get("channel_title", "")
+                            channel_username = item.get("channel_username", "")
+                            message_id = item.get("message_id", 0)
+                            file_id = item.get("file_id") or f"link_{channel_id}_{message_id}"
+                            file_type = item.get("file_type", "document")
+                            file_unique_id = item.get("file_unique_id", "")
+                            post_url = item.get("post_url", "")
+
+                            if not post_url:
+                                if channel_username:
+                                    u = channel_username.lstrip("@")
+                                    post_url = f"https://t.me/{u}/{message_id}"
+                                else:
+                                    cid_str = str(channel_id)
+                                    if cid_str.startswith("-100"):
+                                        num = cid_str[4:]
+                                        post_url = f"https://t.me/c/{num}/{message_id}"
+
+                            clean_tit = generate_search_index_text(title, file_name, caption, channel_title)
+
+                            conn.execute("""
+                            INSERT INTO acervo (
+                                file_id, file_unique_id, file_name, title, clean_title,
+                                file_type, file_size, file_size_str, channel_id,
+                                channel_title, channel_username, message_id, post_url, caption
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(channel_id, message_id) DO UPDATE SET
+                                file_id=CASE WHEN excluded.file_id NOT LIKE 'link_%' THEN excluded.file_id ELSE acervo.file_id END,
+                                file_name=excluded.file_name,
+                                title=excluded.title,
+                                clean_title=excluded.clean_title,
+                                file_size=excluded.file_size,
+                                file_size_str=excluded.file_size_str,
+                                channel_title=excluded.channel_title,
+                                post_url=excluded.post_url,
+                                caption=excluded.caption;
+                            """, (
+                                file_id, file_unique_id, file_name, title, clean_tit,
+                                file_type, file_size, size_str, channel_id,
+                                channel_title, channel_username, message_id, post_url, caption
+                            ))
+                            retry_count += 1
+                        conn.commit()
+                    return retry_count
+                except Exception as e_retry:
+                    logger.error(f"[AcervoDatabase] Erro no retry do lote: {e_retry}")
             logger.error(f"Erro no lote de itens do acervo: {e}")
             return inserted_or_updated
 
@@ -537,6 +641,9 @@ class AcervoDatabase:
                     "top_channels": [dict(r) for r in top_channels]
                 }
         except Exception as e:
+            if "malformed" in str(e).lower() or "corrupt" in str(e).lower():
+                self._heal_db()
+                self._init_db()
             logger.error(f"Erro ao obter estatísticas do acervo: {e}")
             return {"total_files": 0, "total_channels": 0, "by_type": {}, "top_channels": []}
 
@@ -614,6 +721,9 @@ class AcervoDatabase:
                     logger.info(f"[Acervo] Limpeza concluída: {deleted_count} mensagens de texto removidas do acervo.")
             return deleted_count
         except Exception as e:
+            if "malformed" in str(e).lower() or "corrupt" in str(e).lower():
+                self._heal_db()
+                self._init_db()
             logger.error(f"Erro ao purgar textos espúrios do acervo: {e}")
             return 0
 
