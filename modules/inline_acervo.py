@@ -1368,21 +1368,17 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                 f"🎼 <b>{html.escape(title)}</b>\n"
                 f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
                 f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
-                f"💡 <i>Dica: Toque em 'Todos os Canais' para acessar o acervo completo!</i>\n"
                 f"🎵 <i>Enviado via @{bot_username}</i>"
             )
 
             buttons = []
-            if bot_username:
-                buttons.append([InlineKeyboardButton("📥 Baixar no Privado (Sem Entrar)", url=f"https://t.me/{bot_username}?start=dl_{item_id}")])
-
-            row2 = []
+            row = []
             if post_url:
-                row2.append(InlineKeyboardButton("📢 Ver no Canal", url=post_url))
+                row.append(InlineKeyboardButton("📢 Baixar / Ver no Canal", url=post_url))
             if chatlist_url:
-                row2.append(InlineKeyboardButton("📁 Todos os Canais (1 Toque)", url=chatlist_url))
-            if row2:
-                buttons.append(row2)
+                row.append(InlineKeyboardButton("📁 Nossos Canais", url=chatlist_url))
+            if row:
+                buttons.append(row)
 
             markup = InlineKeyboardMarkup(buttons)
 
@@ -1411,22 +1407,18 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                         )
                     )
             else:
-                # Item indexado por link/histórico: envia card elegante com link direto ao post
+                # Item indexado por link/histórico: envia card direto no grupo sem explicação
                 card_text = (
                     f"🎼 <b>{html.escape(title)}</b>\n"
                     f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
                     f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
-                    f"💡 <b>Como baixar esta partitura:</b>\n"
-                    f"• <b>Baixar no Privado:</b> O bot envia o arquivo direto no seu chat (sem precisar entrar no canal)!\n"
-                    f"• <b>Ver no Canal:</b> Abre a mensagem direto no canal de origem.\n"
-                    f"• <b>Todos os Canais:</b> Entre na pasta oficial do Telegram com 1 toque para desbloquear todo o acervo!\n\n"
                     f"🎵 <i>Enviado via @{bot_username}</i>"
                 )
                 inline_results.append(
                     InlineQueryResultArticle(
                         id=f"art_{item_id}",
                         title=title,
-                        description=f"📢 {chan_title} • Baixar ou ver no canal",
+                        description=f"📢 {chan_title} • Toque para enviar no grupo",
                         input_message_content=InputTextMessageContent(card_text, parse_mode=ParseMode.HTML),
                         reply_markup=markup
                     )
