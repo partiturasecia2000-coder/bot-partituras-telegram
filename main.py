@@ -435,6 +435,54 @@ def main():
                     await msg.reply_text(f"❌ <b>Erro ao ler arquivo JSON:</b> <code>{html.escape(str(e_json))}</code>", parse_mode=ParseMode.HTML)
                     return
 
+            # 1.1 Suporte a Link de arquivo JSON de partituras (URL direta / Google Drive / Dropbox)
+            if msg and msg.text and msg.text.strip().startswith(("http://", "https://")):
+                url_text = msg.text.strip()
+                if ".json" in url_text.lower() or "drive.google.com" in url_text.lower() or "dropbox.com" in url_text.lower():
+                    import httpx
+                    cfg = load_config()
+                    try:
+                        status_pending = await msg.reply_text("🌐 <i>Baixando e processando link de exportação do acervo...</i>", parse_mode=ParseMode.HTML)
+                        # Converte links comuns do Drive / Dropbox para download direto
+                        download_url = url_text
+                        if "drive.google.com" in download_url and "/file/d/" in download_url:
+                            file_id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', download_url)
+                            if file_id_match:
+                                download_url = f"https://drive.google.com/uc?export=download&id={file_id_match.group(1)}"
+                        elif "dropbox.com" in download_url:
+                            download_url = download_url.replace("?dl=0", "?dl=1")
+
+                        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                            resp = await client.get(download_url)
+                            if resp.status_code == 200:
+                                parsed_data = resp.json()
+                                import_res = import_universal_json(parsed_data, fallback_channel_id=cfg.get("main_channel_id"))
+                                if import_res.get("success"):
+                                    count = import_res.get("count", 0)
+                                    chan_title = import_res.get("channel_title", "Canais")
+                                    stats = acervo_db.get_stats()
+                                    total_acervo = stats.get("total_files", 0)
+                                    bot_me = await context.bot.get_me()
+                                    bot_user = bot_me.username or "botpartituras_bot"
+
+                                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                                    await status_pending.edit_text(
+                                        f"🎉 <b>IMPORTAÇÃO DO ACERVO VIA LINK CONCLUÍDA!</b> 🎼\n\n"
+                                        f"• <b>Origem:</b> {html.escape(chan_title)}\n"
+                                        f"• <b>Partituras Processadas:</b> <code>{count}</code>\n"
+                                        f"• <b>Total Geral no Acervo:</b> <code>{total_acervo}</code>\n\n"
+                                        f"💡 <b>Teste a busca instantânea agora mesmo:</b>\n"
+                                        f"Digite em qualquer chat: <code>@{bot_user} Harpa 15</code>",
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=InlineKeyboardMarkup([
+                                            [InlineKeyboardButton("🔍 Testar Busca Agora", switch_inline_query_current_chat="")],
+                                            [InlineKeyboardButton("🎼 Ver Acervo", callback_data="acervo:menu")]
+                                        ])
+                                    )
+                                    return
+                    except Exception as e_link:
+                        logger.debug(f"Mensagem com link não era JSON de acervo: {e_link}")
+
             # 2. Detecção automática de partituras/áudios enviados ou encaminhados no privado
             media_info = extract_media_from_message(msg)
             if media_info:
