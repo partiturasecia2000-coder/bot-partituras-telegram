@@ -442,6 +442,116 @@ class AdminCommandHandler:
                         await update.effective_message.reply_text(tut_caption, parse_mode=ParseMode.HTML, reply_markup=reply_kb)
                     return
 
+                elif arg.startswith("dl_"):
+                    try:
+                        raw_id = arg[3:]
+                        item_id = int(raw_id)
+                        from modules.inline_acervo import acervo_db
+                        item = acervo_db.get_item(item_id)
+                        if not item:
+                            await update.effective_message.reply_text(
+                                "❌ Arquivo não encontrado no acervo ou foi removido.",
+                                reply_markup=reply_kb
+                            )
+                            return
+
+                        cfg = load_config()
+                        title = item.get("title", "Partitura")
+                        file_id = item.get("file_id", "")
+                        channel_id = item.get("channel_id")
+                        message_id = item.get("message_id")
+                        chan_title = item.get("channel_title") or "Canal do Acervo"
+                        file_name = item.get("file_name") or "partitura.pdf"
+                        file_type = item.get("file_type", "document")
+                        chatlist_url = cfg.get("acervo_chatlist_url", "https://t.me/addlist/H5UNPP0h4FI3ZTNh")
+                        post_url = item.get("post_url", "")
+
+                        status_msg = await update.effective_message.reply_text(
+                            f"⏳ <i>Buscando <b>{html.escape(title)}</b> no acervo para você...</i>",
+                            parse_mode=ParseMode.HTML
+                        )
+
+                        sent = False
+                        caption = (
+                            f"🎼 <b>{html.escape(title)}</b>\n"
+                            f"📁 <code>{html.escape(file_name)}</code>\n"
+                            f"📢 Origem: {html.escape(chan_title)}\n\n"
+                            f"🎵 <i>Enviado por @{context.bot.username or 'bot'}</i>"
+                        )
+                        dl_markup = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📁 Entrar em Todos os Canais (1 Toque)", url=chatlist_url)],
+                            [InlineKeyboardButton("🔍 Buscar Outra Partitura", switch_inline_query_current_chat="")]
+                        ])
+
+                        # 1. Se tiver file_id real do Telegram (não começa com link_)
+                        if file_id and not file_id.startswith("link_"):
+                            try:
+                                if file_type == "audio":
+                                    await context.bot.send_audio(
+                                        chat_id=chat.id,
+                                        audio=file_id,
+                                        caption=caption,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=dl_markup
+                                    )
+                                else:
+                                    await context.bot.send_document(
+                                        chat_id=chat.id,
+                                        document=file_id,
+                                        caption=caption,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=dl_markup
+                                    )
+                                sent = True
+                            except Exception as e:
+                                logger.warning(f"Falha ao enviar por file_id: {e}")
+
+                        # 2. Se for link_ ou se falhou, tenta copiar direto do canal
+                        if not sent and channel_id and message_id:
+                            try:
+                                c_id = int(channel_id)
+                                m_id = int(message_id)
+                                await context.bot.copy_message(
+                                    chat_id=chat.id,
+                                    from_chat_id=c_id,
+                                    message_id=m_id,
+                                    caption=caption,
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=dl_markup
+                                )
+                                sent = True
+                            except Exception as e:
+                                logger.warning(f"Falha ao copiar mensagem do canal {channel_id}: {e}")
+
+                        try:
+                            await status_msg.delete()
+                        except Exception:
+                            pass
+
+                        if not sent:
+                            # 3. Fallback: Se o canal for protegido ou o bot não puder copiar
+                            buttons = []
+                            if post_url:
+                                buttons.append([InlineKeyboardButton("📢 Abrir no Canal de Origem", url=post_url)])
+                            buttons.append([InlineKeyboardButton("📁 Entrar em Todos os Canais (1 Toque)", url=chatlist_url)])
+                            markup = InlineKeyboardMarkup(buttons)
+
+                            fallback_text = (
+                                f"🎼 <b>{html.escape(title)}</b>\n"
+                                f"📁 <code>{html.escape(file_name)}</code>\n\n"
+                                f"🔒 <b>Acesso ao Canal Privado:</b>\n"
+                                f"Este arquivo está guardado no canal <i>{html.escape(chan_title)}</i>.\n\n"
+                                f"Para que o Telegram permita baixar o arquivo, você precisa entrar no canal ou adicionar nossa pasta com todos os canais do acervo com 1 toque no botão abaixo:\n"
+                            )
+                            await update.effective_message.reply_text(
+                                fallback_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=markup
+                            )
+                        return
+                    except Exception as e:
+                        logger.error(f"Erro no deep-link dl_: {e}")
+
             welcome_text = (
                 f"👋 Olá, <b>{html.escape(user.first_name)}</b>!\n\n"
                 "Eu sou o <b>Maestro Bot</b>, orquestrador e moderador dos seus grupos e canais musicais!\n\n"
@@ -2623,6 +2733,33 @@ class AdminCommandHandler:
                 caption=caption,
                 parse_mode=ParseMode.MARKDOWN
             )
+
+            # Também envia o backup do acervo de partituras se existir
+            db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "acervo_partituras.db")
+            if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
+                try:
+                    with open(db_path, "rb") as f:
+                        db_bytes = f.read()
+
+                    from modules.inline_acervo import acervo_db
+                    stats = acervo_db.get_stats()
+                    tot_partituras = stats.get("total_files", 0)
+
+                    db_caption = (
+                        "🎼 *Backup do Acervo de Partituras*\n\n"
+                        f"• *Total de Partituras Indexadas:* `{tot_partituras}`\n"
+                        f"• *Tamanho do Arquivo:* `{len(db_bytes) / 1024:.1f} KB`\n\n"
+                        "💡 *Como restaurar o acervo:*\n"
+                        "Basta enviar este arquivo `.db` no privado do bot com a legenda `/restaurar`.\n"
+                    )
+                    await update.effective_chat.send_document(
+                        document=io.BytesIO(db_bytes),
+                        filename="acervo_partituras.db",
+                        caption=db_caption,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except Exception as db_err:
+                    logger.warning(f"Não foi possível enviar backup do db: {db_err}")
         except Exception as e:
             logger.error(f"Erro ao gerar backup: {e}")
             await msg.reply_text(f"❌ Erro ao gerar backup: {e}")
@@ -2649,9 +2786,31 @@ class AdminCommandHandler:
             )
             return
 
-        if not (doc.file_name and doc.file_name.endswith(".json")):
-            await msg.reply_text("❌ Por favor, envie um arquivo `.json` válido (ex: `config.json`).")
+        if not (doc.file_name and (doc.file_name.endswith(".json") or doc.file_name.endswith(".db"))):
+            await msg.reply_text("❌ Por favor, envie um arquivo `.json` (configurações) ou `.db` (acervo de partituras) válido.")
             return
+
+        if doc.file_name.endswith(".db"):
+            try:
+                telegram_file = await doc.get_file()
+                import os
+                db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "acervo_partituras.db")
+                await telegram_file.download_to_drive(custom_path=db_path)
+
+                from modules.inline_acervo import acervo_db
+                stats = acervo_db.get_stats()
+                tot_items = stats.get("total_files", 0)
+                msg_txt = (
+                    "✅ *Acervo de Partituras Restaurado com Sucesso!*\n\n"
+                    f"• *Total de Partituras Reconhecidas:* `{tot_items}`\n"
+                    "• O banco de dados agora está ativo e pronto para busca inline!"
+                )
+                await msg.reply_text(msg_txt, parse_mode=ParseMode.MARKDOWN)
+                return
+            except Exception as e:
+                logger.error(f"Erro ao restaurar banco .db: {e}")
+                await msg.reply_text(f"❌ Erro ao restaurar banco de dados: {e}")
+                return
 
         try:
             telegram_file = await doc.get_file()

@@ -619,6 +619,23 @@ class AcervoDatabase:
             logger.error(f"Erro na busca do acervo: {e}")
             return []
 
+    def get_item(self, item_id: int) -> dict:
+        """Obtém os detalhes de um item específico do acervo pelo ID."""
+        try:
+            with self._get_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("""
+                    SELECT id, channel_id, channel_title, message_id, file_id, file_unique_id, 
+                           file_name, file_size_str, file_type, mime_type, title, post_url 
+                    FROM acervo WHERE id = ?;
+                """, (item_id,)).fetchone()
+                if row:
+                    return dict(row)
+                return None
+        except Exception as e:
+            logger.error(f"Erro ao obter item {item_id} do acervo: {e}")
+            return None
+
     def get_stats(self) -> dict:
         """Retorna estatísticas gerais do acervo global."""
         try:
@@ -1330,6 +1347,8 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                 )
             )
     else:
+        cfg = load_config()
+        chatlist_url = cfg.get("acervo_chatlist_url", "https://t.me/addlist/H5UNPP0h4FI3ZTNh")
         for item in results_data:
             item_id = str(item["id"])
             title = item["title"]
@@ -1349,12 +1368,22 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                 f"🎼 <b>{html.escape(title)}</b>\n"
                 f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
                 f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
+                f"💡 <i>Dica: Toque em 'Todos os Canais' para acessar o acervo completo!</i>\n"
                 f"🎵 <i>Enviado via @{bot_username}</i>"
             )
 
             buttons = []
+            if bot_username:
+                buttons.append([InlineKeyboardButton("📥 Baixar no Privado (Sem Entrar)", url=f"https://t.me/{bot_username}?start=dl_{item_id}")])
+
+            row2 = []
             if post_url:
-                buttons.append([InlineKeyboardButton(f"📢 Abrir no {chan_title[:20]}", url=post_url)])
+                row2.append(InlineKeyboardButton("📢 Ver no Canal", url=post_url))
+            if chatlist_url:
+                row2.append(InlineKeyboardButton("📁 Todos os Canais (1 Toque)", url=chatlist_url))
+            if row2:
+                buttons.append(row2)
+
             markup = InlineKeyboardMarkup(buttons)
 
             # Se o item tiver file_id real do Telegram, envia o arquivo instantaneamente
@@ -1386,14 +1415,18 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                 card_text = (
                     f"🎼 <b>{html.escape(title)}</b>\n"
                     f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
-                    f"📢 <b>Canal:</b> {html.escape(chan_title)}\n\n"
-                    f"<i>Toque no botão abaixo para baixar ou visualizar no canal:</i>"
+                    f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
+                    f"💡 <b>Como baixar esta partitura:</b>\n"
+                    f"• <b>Baixar no Privado:</b> O bot envia o arquivo direto no seu chat (sem precisar entrar no canal)!\n"
+                    f"• <b>Ver no Canal:</b> Abre a mensagem direto no canal de origem.\n"
+                    f"• <b>Todos os Canais:</b> Entre na pasta oficial do Telegram com 1 toque para desbloquear todo o acervo!\n\n"
+                    f"🎵 <i>Enviado via @{bot_username}</i>"
                 )
                 inline_results.append(
                     InlineQueryResultArticle(
                         id=f"art_{item_id}",
                         title=title,
-                        description=f"📢 {chan_title} • Toque para abrir no canal",
+                        description=f"📢 {chan_title} • Baixar ou ver no canal",
                         input_message_content=InputTextMessageContent(card_text, parse_mode=ParseMode.HTML),
                         reply_markup=markup
                     )
