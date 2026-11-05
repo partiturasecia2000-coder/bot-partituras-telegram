@@ -153,9 +153,7 @@ def generate_page_1(chat_title: str, cfg: dict):
     acervo_on = cfg.get("acervo_group_auto_reply", False)
 
     lines = [
-        "🎼 ══════════════════════════ 🎼",
-        "   *MAESTRO BOT — PAINEL PRINCIPAL*",
-        "🎼 ══════════════════════════ 🎼\n",
+        "🎼 *MAESTRO BOT — PAINEL PRINCIPAL*\n",
         f"🏛️ *Chat Ativo:* `{chat_title}`",
         "✨ *Status Geral:* Sistema harmônico e operacional\n",
         "Toque em uma central temática abaixo para orquestrar as configurações:"
@@ -195,9 +193,7 @@ def generate_hub_clean(cfg: dict):
     clean_all = clean_admin and clean_user
 
     lines = [
-        "🧹 ══════════════════════════ 🧹",
-        "   *CENTRAL DE LIMPEZA E FAXINA*",
-        "🧹 ══════════════════════════ 🧹\n",
+        "🧹 *CENTRAL DE LIMPEZA E FAXINA*\n",
         "Mantenha seus grupos 100% limpos e livres de poluição visual:\n",
         f"• 🚪 *Limpar Entradas/Saídas:* {status_icon(del_serv)}",
         f"• 📌 *Limpar Avisos de Fixados:* {status_icon(pin_serv)}",
@@ -239,9 +235,7 @@ def generate_hub_security(cfg: dict):
     cap_on = cfg.get("captcha", {}).get("enabled", False)
 
     lines = [
-        "🛡️ ══════════════════════════ 🛡️",
-        "   *SEGURANÇA & MODERAÇÃO*",
-        "🛡️ ══════════════════════════ 🛡️\n",
+        "🛡️ *SEGURANÇA & MODERAÇÃO*\n",
         "Proteção contra invasores, spammers, links e mensagens proibidas:\n",
         f"• 🛡️ *Anti-Spam Geral:* {status_icon(enabled)}",
         f"• 🔗 *Bloquear Links Web:* {status_icon(links)}",
@@ -287,9 +281,7 @@ def generate_hub_welcome(cfg: dict):
     cap_on = cfg.get("captcha", {}).get("enabled", False)
 
     lines = [
-        "👋 ══════════════════════════ 👋",
-        "   *BOAS-VINDAS & ENTRADA DE MEMBROS*",
-        "👋 ══════════════════════════ 👋\n",
+        "👋 *BOAS-VINDAS & ENTRADA DE MEMBROS*\n",
         "Recepcione novos membros com mensagens personalizadas e aprove inscrições:\n",
         f"• 👋 *Mensagem de Boas-Vindas:* {status_icon(w_on)}",
         f"• ⏱️ *Auto-Apagar Boas-Vindas:* `{format_time_label(del_w_sec)}`",
@@ -327,9 +319,7 @@ def generate_hub_messages(cfg: dict):
     yt_status = "🟢" if yt_enabled and yt_count > 0 else ("🟡" if yt_enabled else "🔴")
 
     lines = [
-        "📢 ══════════════════════════ 📢",
-        "   *MENSAGENS & COMUNICAÇÃO*",
-        "📢 ══════════════════════════ 📢\n",
+        "📢 *MENSAGENS & COMUNICAÇÃO*\n",
         "Envie comunicados, agende transmissões e configure respostas automáticas:\n",
         f"• 📢 *Transmissões Agendadas:* `{sched_count}` pendente(s)",
         f"• ⏱️ *Mensagens Recorrentes:* `{rec_count}` ativa(s)",
@@ -367,9 +357,7 @@ def generate_hub_system(cfg: dict):
     tz_label = get_timezone_label(cfg)
 
     lines = [
-        "⚙️ ══════════════════════════ ⚙️",
-        "   *SISTEMA & COMUNIDADE*",
-        "⚙️ ══════════════════════════ ⚙️\n",
+        "⚙️ *SISTEMA & COMUNIDADE*\n",
         "Gerencie as salas integradas, auditoria e preferências gerais:\n",
         f"• 👥 *Grupos Vinculados:* `{len(groups)}` | 📢 *Canais:* `{len(channels)}`",
         f"• 🌙 *Modo Noturno (Silêncio):* {status_icon(nm_on)}",
@@ -1970,9 +1958,7 @@ def generate_sub_youtube(cfg: dict):
     toggle_btn_text = "🎬 Notificador: 🟢 Ativado" if enabled else "🎬 Notificador: 🔴 Desativado"
 
     lines = [
-        "🎬 ══════════════════════════ 🎬",
-        "   *NOTIFICADOR DO YOUTUBE*",
-        "🎬 ══════════════════════════ 🎬\n",
+        "🎬 *NOTIFICADOR DO YOUTUBE*\n",
         "Monitore canais do YouTube e receba novos vídeos automaticamente no grupo!\n",
         f"• ⚙️ *Status Geral:* {status_str}",
         f"• 🎯 *Destino das Postagens:* `{target_chat}`",
@@ -2012,9 +1998,7 @@ def generate_sub_youtube_delete(cfg: dict):
     channels = yt_cfg.get("channels", [])
 
     lines = [
-        "🗑️ ══════════════════════════ 🗑️",
-        "   *REMOVER CANAL DO YOUTUBE*",
-        "🗑️ ══════════════════════════ 🗑️\n",
+        "🗑️ *REMOVER CANAL DO YOUTUBE*\n",
         "Selecione o canal que você deseja remover do monitoramento:"
     ]
     text = "\n".join(lines)

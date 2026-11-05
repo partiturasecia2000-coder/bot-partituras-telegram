@@ -158,9 +158,7 @@ def format_youtube_card(video: dict, channel_name: str, channel_url: str) -> Tup
     clean_channel = channel_name.replace("*", "").replace("_", "").replace("`", "")
 
     lines = [
-        "╔═══════════════════════════════════╗",
-        "      🎬 *NOVO VÍDEO NO YOUTUBE!*",
-        "╚═══════════════════════════════════╝\n",
+        "🎬 *NOVO VÍDEO NO YOUTUBE!*",
         f"📺 *Canal:* {clean_channel}",
         f"🎥 *Título:* *{clean_title}*"
     ]
@@ -168,8 +166,9 @@ def format_youtube_card(video: dict, channel_name: str, channel_url: str) -> Tup
         lines.append(f"⏰ *Publicação:* `{published}`")
 
     lines.extend([
-        "\n🔗 *Assista agora no YouTube:*",
-        f"{video_url}\n",
+        "",
+        f"🔗 *Assista agora:* {video_url}",
+        "",
         "🎼 *Partituras & Cia* • Compartilhando boa música com você!"
     ])
 
