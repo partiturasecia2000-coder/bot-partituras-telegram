@@ -159,17 +159,114 @@ class AntispamHandler:
         warn_del_sec = antispam_cfg.get("warn_delete_after_seconds", 8)
         user_mention = f"@{user.username}" if user.username else user.first_name
 
+        text = message.text or message.caption or ""
+        text_lower = text.lower()
+        import unicodedata
+        norm_text = unicodedata.normalize('NFKD', text_lower).encode('ASCII', 'ignore').decode('ASCII')
+
         # 1. Verificação de Flood
         if await self.check_flood(update, context, config):
             return True
 
+        # 2. Palavras Proibidas (Blacklist) com Punição Configurável
+        # ATENÇÃO: As palavras proibidas rodam INDEPENDENTEMENTE do toggle geral de antispam!
+        # Se o admin cadastrou termos na lista negra, eles sempre serão protegidos e punidos!
+        banned_words = antispam_cfg.get("banned_words", [])
+        action = antispam_cfg.get("banned_words_action", "warn")  # "warn", "warning", "ban"
+
+        for word in banned_words:
+            if not word:
+                continue
+            w_clean = word.lower().strip()
+            w_norm = unicodedata.normalize('NFKD', w_clean).encode('ASCII', 'ignore').decode('ASCII')
+
+            # Checa correspondência exata ou normalizada sem acentos
+            if (w_clean in text_lower) or (w_norm and w_norm in norm_text):
+                await safe_delete_message(context.bot, chat.id, message.message_id)
+
+                safe_user = html.escape(user_mention)
+                spoiler_word = f"<tg-spoiler>{html.escape(word)}</tg-spoiler>"
+                from modules.utils import schedule_message_deletion
+
+                if action == "ban":
+                    # Punição: Ban imediato
+                    try:
+                        await chat.ban_member(user_id=user.id)
+                        notice = f"🔨 {safe_user} foi <b>banido(a)</b> por usar o termo proibido {spoiler_word}."
+                    except Exception as e:
+                        logger.error(f"Erro ao banir usuário por palavra proibida: {e}")
+                        notice = f"⚠️ {safe_user}, sua mensagem continha o termo proibido {spoiler_word} e foi removida."
+
+                    # AVISO PÚBLICO TEMPORÁRIO NO GRUPO:
+                    # Todos devem ver que o infrator foi banido! Auto-apaga em X segundos para não poluir.
+                    try:
+                        sent_w = await context.bot.send_message(
+                            chat_id=chat.id,
+                            text=notice,
+                            parse_mode=ParseMode.HTML
+                        )
+                        if sent_w and warn_del_sec > 0:
+                            schedule_message_deletion(context, chat.id, sent_w.message_id, warn_del_sec)
+                    except Exception as e_w:
+                        logger.debug(f"Falha ao enviar aviso público de ban: {e_w}")
+
+                elif action == "warning":
+                    # Punição: Só Advertência com contagem (3 advertências = ban)
+                    w_key = (chat.id, user.id)
+                    curr_warns = self.user_warnings.get(w_key, 0) + 1
+                    self.user_warnings[w_key] = curr_warns
+
+                    if curr_warns >= 3:
+                        try:
+                            await chat.ban_member(user_id=user.id)
+                            notice = f"🔨 {safe_user} atingiu o limite de <b>3 advertências</b> pelo termo {spoiler_word} e foi banido(a) do grupo."
+                        except Exception:
+                            notice = f"⚠️ {safe_user} atingiu 3 advertências pelo termo {spoiler_word}."
+                        self.user_warnings.pop(w_key, None)
+                    else:
+                        notice = f"❗ {safe_user}, você recebeu uma advertência (<b>{curr_warns}/3</b>) pelo termo proibido {spoiler_word}! Sua mensagem foi removida."
+
+                    try:
+                        sent_w = await context.bot.send_message(
+                            chat_id=chat.id,
+                            text=notice,
+                            parse_mode=ParseMode.HTML
+                        )
+                        if sent_w and warn_del_sec > 0:
+                            schedule_message_deletion(context, chat.id, sent_w.message_id, warn_del_sec)
+                    except Exception:
+                        pass
+
+                else:
+                    # Punição: Só Aviso simples (sem contagem nem ban)
+                    notice = f"⚠️ {safe_user}, o termo {spoiler_word} é proibido neste grupo. Sua mensagem foi removida."
+                    try:
+                        sent_w = await context.bot.send_message(
+                            chat_id=chat.id,
+                            text=notice,
+                            parse_mode=ParseMode.HTML
+                        )
+                        if sent_w and warn_del_sec > 0:
+                            schedule_message_deletion(context, chat.id, sent_w.message_id, warn_del_sec)
+                    except Exception:
+                        pass
+
+                logger.info(f"Palavra proibida '{word}' detectada de {user.id} no chat {chat.id} (Punição: {action})")
+                await send_mod_log(
+                    bot=context.bot,
+                    event_type="spam",
+                    title="Termo Proibido Detectado",
+                    user_info=f"{html.escape(user.first_name)} (<code>{user.id}</code>)",
+                    reason=f"Palavra proibida: {word}",
+                    details=f"Punição: {action}. Conteúdo: <i>{html.escape(text[:120])}</i>"
+                )
+                return True
+
+        # Se o Anti-Spam Geral estiver desativado, não processa links/encaminhamentos gerais
         if not antispam_cfg.get("enabled", True):
             return False
 
-        text = message.text or message.caption or ""
-        text_lower = text.lower()
-
-        # 2. Bloqueio de Mensagens Encaminhadas de Canais/Outros Chats
+        # 3. Bloqueio de Mensagens Encaminhadas de Canais/Outros Chats
         if antispam_cfg.get("block_forwards", True):
             is_forwarded = False
             # Suporte para PTB 20+ e PTB 22+ (forward_origin ou forward_date)
@@ -199,7 +296,7 @@ class AntispamHandler:
                 )
                 return True
 
-        # 3. Bloqueio de Links de Convite do Telegram
+        # 4. Bloqueio de Links de Convite do Telegram
         if antispam_cfg.get("block_telegram_invites", True):
             if TG_INVITE_REGEX.search(text):
                 allowed_domains = antispam_cfg.get("allowed_domains", [])
@@ -232,7 +329,7 @@ class AntispamHandler:
                     )
                     return True
 
-        # 4. Bloqueio Geral de Links
+        # 5. Bloqueio Geral de Links
         if antispam_cfg.get("block_links", True):
             has_link = False
             allowed_domains = antispam_cfg.get("allowed_domains", [])
@@ -273,77 +370,6 @@ class AntispamHandler:
                     user_info=f"{html.escape(user.first_name)} (<code>{user.id}</code>)",
                     reason="Link externo não autorizado",
                     details=f"Conteúdo: <i>{html.escape(text[:120])}</i>"
-                )
-                return True
-
-        # 5. Palavras Proibidas (Blacklist) com Punição Configurável
-        banned_words = antispam_cfg.get("banned_words", [])
-        action = antispam_cfg.get("banned_words_action", "warn")  # "warn", "warning", "ban"
-
-        for word in banned_words:
-            if word and word.lower() in text_lower:
-                await safe_delete_message(context.bot, chat.id, message.message_id)
-
-                safe_user = html.escape(user_mention)
-                spoiler_word = f"<tg-spoiler>{html.escape(word)}</tg-spoiler>"
-
-                if action == "ban":
-                    # Punição: Ban imediato
-                    try:
-                        await chat.ban_member(user_id=user.id)
-                        notice = f"🔨 {safe_user} foi <b>banido(a)</b> por usar o termo proibido {spoiler_word}."
-                    except Exception as e:
-                        logger.error(f"Erro ao banir usuário por palavra proibida: {e}")
-                        notice = f"⚠️ {safe_user}, sua mensagem continha o termo proibido {spoiler_word} e foi removida."
-
-                elif action == "warning":
-                    # Punição: Só Advertência com contagem (3 advertências = ban)
-                    w_key = (chat.id, user.id)
-                    curr_warns = self.user_warnings.get(w_key, 0) + 1
-                    self.user_warnings[w_key] = curr_warns
-
-                    if curr_warns >= 3:
-                        try:
-                            await chat.ban_member(user_id=user.id)
-                            notice = f"🔨 {safe_user} atingiu o limite de <b>3 advertências</b> pelo termo {spoiler_word} e foi banido(a) do grupo."
-                        except Exception:
-                            notice = f"⚠️ {safe_user} atingiu 3 advertências pelo termo {spoiler_word}."
-                        self.user_warnings.pop(w_key, None)
-                    else:
-                        notice = f"❗ {safe_user}, você recebeu uma advertência (<b>{curr_warns}/3</b>) pelo termo proibido {spoiler_word}! Sua mensagem foi removida."
-
-                else:
-                    # Punição: Só Aviso simples (sem contagem nem ban)
-                    notice = f"⚠️ {safe_user}, o termo {spoiler_word} é proibido neste grupo. Sua mensagem foi removida."
-
-                try:
-                    await send_ephemeral_or_temporary_warning(
-                        bot=context.bot,
-                        chat_id=chat.id,
-                        user_id=user.id,
-                        text=notice,
-                        context=context,
-                        delete_after_seconds=warn_del_sec,
-                        parse_mode=ParseMode.HTML
-                    )
-                except Exception:
-                    await send_ephemeral_or_temporary_warning(
-                        bot=context.bot,
-                        chat_id=chat.id,
-                        user_id=user.id,
-                        text=f"⚠️ {user_mention}, sua mensagem continha um termo proibido e foi removida.",
-                        context=context,
-                        delete_after_seconds=warn_del_sec
-                    )
-
-                logger.info(f"Palavra proibida '{word}' detectada de {user.id} no chat {chat.id} (Punição: {action})")
-                await send_mod_log(
-                    bot=context.bot,
-                    event_type="spam",
-                    title="Termo Proibido Detectado",
-                    user_info=f"{html.escape(user.first_name)} (<code>{user.id}</code>)",
-                    reason=f"Palavra proibida: {word}",
-                    details=f"Punição: {action}. Conteúdo: <i>{html.escape(text[:120])}</i>"
                 )
                 return True
 
