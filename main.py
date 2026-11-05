@@ -577,6 +577,26 @@ def main():
                 pass
             return
 
+        # 0.5 Checa se a mensagem no grupo foi enviada via busca inline do próprio bot (@botpartituras_bot)
+        if chat and chat.type in ("group", "supergroup"):
+            bot_me = getattr(context.bot, "bot", None) or await context.bot.get_me()
+            bot_user = (bot_me.username or "").lower()
+            is_our_inline = bool(
+                msg and msg.via_bot and (
+                    msg.via_bot.id == context.bot.id
+                    or (bot_me and msg.via_bot.id == bot_me.id)
+                    or (msg.via_bot.username and msg.via_bot.username.lower() == bot_user)
+                )
+            )
+            if is_our_inline:
+                cfg = load_config()
+                inline_del_sec = cfg.get("inline_auto_delete_seconds", 0)
+                if inline_del_sec > 0:
+                    from modules.utils import schedule_message_deletion
+                    schedule_message_deletion(context, chat.id, msg.message_id, inline_del_sec, bot=context.bot)
+                    logger.info(f"[Inline Auto-Delete] Partitura inline {msg.message_id} no grupo '{chat.title}' ({chat.id}) agendada para apagar em {inline_del_sec}s.")
+                return
+
         # 1. Checa Silêncio Noturno (Modo Noturno estilo Rose Bot)
         if await nightmode_handler.check_night_mode(update, context):
             return
@@ -771,6 +791,7 @@ def main():
     app.add_handler(CommandHandler(["relogio", "horario", "hora", "diag"], admin_cmd_handler.cmd_relogio))
     app.add_handler(CommandHandler(["setlog", "log"], admin_cmd_handler.cmd_setlog))
     app.add_handler(CommandHandler(["backup", "exportar"], admin_cmd_handler.cmd_backup))
+    app.add_handler(CommandHandler(["autodel", "autoapagar", "autodelete"], admin_cmd_handler.cmd_autodel))
     app.add_handler(CommandHandler(["restaurar", "restore", "importar"], admin_cmd_handler.cmd_restaurar))
     app.add_handler(CommandHandler(["filtro", "filter"], auto_responder_handler.cmd_filtro))
     app.add_handler(CommandHandler(["filtros", "filters"], auto_responder_handler.cmd_filtros))

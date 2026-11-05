@@ -1438,6 +1438,57 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
         logger.error(f"Erro ao responder inline_query: {e}")
 
 
+def generate_inline_autodel_menu_text_and_kb():
+    """Gera o menu interativo para escolher o tempo de auto-exclusão das buscas inline no grupo."""
+    cfg = load_config()
+    current_sec = cfg.get("inline_auto_delete_seconds", 0)
+
+    if current_sec == 0:
+        cur_lbl = "Não apagar (Permanente) 🟢"
+    elif current_sec < 60:
+        cur_lbl = f"{current_sec} segundos"
+    elif current_sec < 3600:
+        cur_lbl = f"{current_sec // 60} minutos"
+    else:
+        hours = current_sec / 3600
+        cur_lbl = f"{int(hours) if hours.is_integer() else hours} hora(s)"
+
+    text = (
+        "⏱️ ════════════════════════ ⏱️\n"
+        "   <b>APAGAR BUSCA INLINE NO GRUPO</b>\n"
+        "⏱️ ════════════════════════ ⏱️\n\n"
+        "Quando membros pesquisarem com <code>@botpartituras_bot</code> e enviarem a partitura no grupo, "
+        "o bot pode apagar essa mensagem automaticamente após o tempo escolhido para manter o grupo limpo e organizado!\n\n"
+        f"⚙️ <b>Tempo configurado atualmente:</b> <code>{cur_lbl}</code>\n\n"
+        "<i>Toque em uma das opções abaixo para alterar:</i>"
+    )
+
+    def mark(val):
+        return " ✅" if current_sec == val else ""
+
+    kb = [
+        [InlineKeyboardButton(f"❌ Não apagar (Permanente){mark(0)}", callback_data="acervo:set_inline_del:0")],
+        [
+            InlineKeyboardButton(f"⏱️ 5 min{mark(300)}", callback_data="acervo:set_inline_del:300"),
+            InlineKeyboardButton(f"⏱️ 10 min{mark(600)}", callback_data="acervo:set_inline_del:600")
+        ],
+        [
+            InlineKeyboardButton(f"⏱️ 20 min{mark(1200)}", callback_data="acervo:set_inline_del:1200"),
+            InlineKeyboardButton(f"⏱️ 30 min{mark(1800)}", callback_data="acervo:set_inline_del:1800")
+        ],
+        [
+            InlineKeyboardButton(f"⏱️ 45 min{mark(2700)}", callback_data="acervo:set_inline_del:2700"),
+            InlineKeyboardButton(f"⏱️ 1 hora{mark(3600)}", callback_data="acervo:set_inline_del:3600")
+        ],
+        [
+            InlineKeyboardButton(f"⏱️ 2 horas{mark(7200)}", callback_data="acervo:set_inline_del:7200"),
+            InlineKeyboardButton(f"⏱️ 24 horas{mark(86400)}", callback_data="acervo:set_inline_del:86400")
+        ],
+        [InlineKeyboardButton("◀ Voltar ao Acervo", callback_data="acervo:menu")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
 def generate_acervo_dashboard_text_and_kb():
     """Gera o texto e teclado do painel administrativo do Acervo."""
     stats = acervo_db.get_stats()
@@ -1455,21 +1506,16 @@ def generate_acervo_dashboard_text_and_kb():
     auto_reply_on = cfg.get("acervo_group_auto_reply", False)
     auto_reply_badge = "ATIVADO 🟢" if auto_reply_on else "DESATIVADO 🔴"
 
-    autodel = cfg.get("acervo_auto_delete_seconds", 0)
-    if autodel == 0:
-        autodel_label = "Desativado (Permanente) 🟢"
-    elif autodel == 30:
-        autodel_label = "30s (Efêmera ⚡)"
-    elif autodel == 60:
-        autodel_label = "1 min ⏳"
-    elif autodel == 120:
-        autodel_label = "2 min ⏳"
-    elif autodel == 300:
-        autodel_label = "5 min ⏳"
-    elif autodel == 600:
-        autodel_label = "10 min ⏳"
+    inline_autodel = cfg.get("inline_auto_delete_seconds", 0)
+    if inline_autodel == 0:
+        inline_autodel_label = "Não apagar 🟢"
+    elif inline_autodel < 60:
+        inline_autodel_label = f"{inline_autodel}s ⏳"
+    elif inline_autodel < 3600:
+        inline_autodel_label = f"{inline_autodel // 60} min ⏳"
     else:
-        autodel_label = f"{autodel}s ⏳"
+        hours = inline_autodel / 3600
+        inline_autodel_label = f"{int(hours) if hours.is_integer() else hours}h ⏳"
 
     lines = [
         "🎼 ══════════════════════ 🎼",
@@ -1479,8 +1525,8 @@ def generate_acervo_dashboard_text_and_kb():
         f"📄 <b>Documentos / PDFs:</b> <code>{docs_count}</code>",
         f"🎵 <b>Áudios / Playbacks:</b> <code>{aud_count}</code>",
         f"📢 <b>Canais no Acervo:</b> <code>{total_chans}</code> (de {len(linked_c)} vinculados)",
-        f"🤖 <b>Auto-Resposta no Grupo:</b> <code>{auto_reply_badge}</code>",
-        f"⏳ <b>Auto-Apagar / Efêmera no Grupo:</b> <code>{autodel_label}</code>\n"
+        f"🗑️ <b>Apagar Busca Inline no Grupo:</b> <code>{inline_autodel_label}</code>",
+        f"🤖 <b>Auto-Resposta no Grupo:</b> <code>{auto_reply_badge}</code>\n"
     ]
 
     if top_channels:
@@ -1506,8 +1552,8 @@ def generate_acervo_dashboard_text_and_kb():
     )
 
     kb = [
+        [InlineKeyboardButton(f"🗑️ Apagar Busca Inline: {inline_autodel_label}", callback_data="acervo:inline_autodel_menu")],
         [InlineKeyboardButton(f"🤖 Auto-Resposta: {auto_reply_badge}", callback_data="acervo:toggle:autoreply")],
-        [InlineKeyboardButton(f"⏳ Auto-Apagar no Grupo: {autodel_label}", callback_data="acervo:cycle_autodel")],
         [InlineKeyboardButton("🔍 Testar Busca Agora", switch_inline_query_current_chat="")],
         [InlineKeyboardButton("🧹 Limpar Mensagens de Texto", callback_data="acervo:purge_chatter")],
         [InlineKeyboardButton("🔄 Sincronizar / Varrer Canais", callback_data="acervo:scan:menu")],
@@ -1598,6 +1644,42 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         except Exception:
             await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        return
+
+    if data == "acervo:inline_autodel_menu":
+        await query.answer()
+        text, markup = generate_inline_autodel_menu_text_and_kb()
+        try:
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except Exception:
+            pass
+        return
+
+    if data.startswith("acervo:set_inline_del:"):
+        sec = int(data.split(":")[-1])
+        cfg = load_config()
+        cfg["inline_auto_delete_seconds"] = sec
+        save_config(cfg)
+
+        if sec == 0:
+            ans = "Busca inline no grupo: Não apagar (Permanente)!"
+        elif sec < 60:
+            ans = f"Busca inline será apagada após {sec}s!"
+        elif sec < 3600:
+            ans = f"Busca inline será apagada após {sec // 60} min!"
+        else:
+            ans = f"Busca inline será apagada após {sec // 3600}h!"
+
+        try:
+            await query.answer(ans, show_alert=True)
+        except Exception:
+            pass
+
+        text, markup = generate_inline_autodel_menu_text_and_kb()
+        try:
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except Exception:
+            pass
         return
 
     if data == "acervo:scan:menu":

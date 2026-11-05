@@ -2589,6 +2589,15 @@ class AdminCommandHandler:
 
         await query.answer()
 
+    async def cmd_autodel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Abre diretamente o menu de configuração de auto-apagar da busca inline."""
+        if not await self._require_admin(update):
+            return
+        await self._clean_admin_trigger(update)
+        from modules.inline_acervo import generate_inline_autodel_menu_text_and_kb
+        text, markup = generate_inline_autodel_menu_text_and_kb()
+        await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+
     async def cmd_backup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Envia o arquivo config.json atual para o administrador fazer download."""
         msg = update.effective_message
