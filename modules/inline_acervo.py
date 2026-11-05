@@ -1380,29 +1380,52 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
             channel_username = item.get("channel_username", "")
             channel_link = get_channel_invite_link(cfg, channel_id, channel_username)
 
-            desc_parts = [f"📢 {chan_title[:24]}"]
+            badge_short, format_name, format_icon = get_file_format_info(file_name, file_type)
+
+            # Título e descrição refinados na janela suspensa da busca
+            dropdown_title = f"{format_icon} {badge_short} {title}"
+            desc_parts = []
             if file_size_str:
-                desc_parts.append(file_size_str)
-            description = " • ".join(desc_parts)
+                desc_parts.append(f"💾 {file_size_str}")
+            desc_parts.append(f"📢 {chan_title[:20]}")
+            dropdown_desc = " • ".join(desc_parts)
+
+            # Card com visual elegante e divisores
+            size_part = f" • 💾 <b>Tamanho:</b> <code>{file_size_str}</code>" if file_size_str else ""
+            card_text = (
+                f"🎼 <b>{html.escape(title.upper())}</b>\n"
+                f"──────────────────────────────\n"
+                f"📄 <b>Tipo:</b> {format_name}{size_part}\n"
+                f"📢 <b>Canal:</b> {html.escape(chan_title)}\n"
+                f"──────────────────────────────\n"
+                f"🔒 <b>Acesso ao Canal Privado:</b>\n"
+                f"1️⃣ Toque em <b>'1º Entrar no Canal'</b> para se inscrever\n"
+                f"2️⃣ Toque em <b>'2º Baixar Partitura'</b> para abrir o arquivo\n\n"
+                f"🎵 <i>Enviado via @{bot_username}</i>"
+            )
 
             caption = (
-                f"🎼 <b>{html.escape(title)}</b>\n"
-                f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
+                f"🎼 <b>{html.escape(title.upper())}</b>\n"
+                f"──────────────────────────────\n"
+                f"📄 <b>Tipo:</b> {format_name}{size_part}\n"
                 f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
                 f"🎵 <i>Enviado via @{bot_username}</i>"
             )
 
             buttons = []
-            # 1. Botão para ENTRAR no canal específico onde o arquivo está guardado
+            # Linha 1: Botão para ENTRAR no canal específico onde o arquivo está guardado
             if channel_link:
                 buttons.append([InlineKeyboardButton(f"📢 1º Entrar no Canal ({chan_title[:16]})", url=channel_link)])
 
-            # 2. Botão para BAIXAR / ABRIR o arquivo naquele canal
+            # Linha 2: Botão para BAIXAR / ABRIR o arquivo naquele canal
             if post_url:
                 buttons.append([InlineKeyboardButton("📥 2º Baixar Partitura", url=post_url)])
             elif not channel_link:
                 if chatlist_url:
                     buttons.append([InlineKeyboardButton("📁 Nossos Canais", url=chatlist_url)])
+
+            # Linha 3: Botão de atalho para buscar outra partitura imediatamente no grupo
+            buttons.append([InlineKeyboardButton("🔍 Buscar Outra Partitura", switch_inline_query_current_chat="")])
 
             markup = InlineKeyboardMarkup(buttons)
 
@@ -1422,30 +1445,20 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                     inline_results.append(
                         InlineQueryResultCachedDocument(
                             id=f"doc_{item_id}",
-                            title=title,
+                            title=dropdown_title,
                             document_file_id=file_id,
-                            description=description,
+                            description=dropdown_desc,
                             caption=caption,
                             parse_mode=ParseMode.HTML,
                             reply_markup=markup
                         )
                     )
             else:
-                # Item indexado por link/histórico: envia card explícito com os 2 passos
-                card_text = (
-                    f"🎼 <b>{html.escape(title)}</b>\n"
-                    f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
-                    f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
-                    f"⚠️ <b>Atenção:</b> Este canal é privado. Para conseguir baixar e abrir a partitura, você <b>precisa entrar no canal primeiro</b>!\n"
-                    f"1️⃣ Toque em <b>'1º Entrar no Canal'</b> para se inscrever.\n"
-                    f"2️⃣ Depois toque em <b>'2º Baixar Partitura'</b> para acessar o arquivo!\n\n"
-                    f"🎵 <i>Enviado via @{bot_username}</i>"
-                )
                 inline_results.append(
                     InlineQueryResultArticle(
                         id=f"art_{item_id}",
-                        title=title,
-                        description=f"📢 {chan_title} • 1º Entrar no Canal | 2º Baixar",
+                        title=dropdown_title,
+                        description=dropdown_desc,
                         input_message_content=InputTextMessageContent(card_text, parse_mode=ParseMode.HTML),
                         reply_markup=markup
                     )
@@ -1463,6 +1476,32 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
         )
     except Exception as e:
         logger.error(f"Erro ao responder inline_query: {e}")
+
+
+def get_file_format_info(file_name: str, file_type: str = "document") -> tuple[str, str, str]:
+    """
+    Retorna (badge_curto, nome_formato, emoji_icone) com base na extensão do arquivo.
+    Exemplo: ('[PDF]', 'Partitura em PDF', '📕')
+    """
+    fn = (file_name or "").lower().strip()
+    ext = fn.split(".")[-1] if "." in fn else ""
+
+    if ext == "pdf":
+        return ("[PDF]", "Partitura em PDF", "📕")
+    elif ext in ("sib", "sibelius"):
+        return ("[SIB]", "Sibelius (.sib)", "🎼")
+    elif ext in ("mus", "musx"):
+        return ("[FIN]", "Finale (.musx)", "🎹")
+    elif ext in ("enc", "encore"):
+        return ("[ENC]", "Encore (.enc)", "🎶")
+    elif ext in ("mp3", "m4a", "wav", "ogg", "flac", "aac", "mid", "midi") or file_type == "audio":
+        return ("[ÁUDIO]", "Áudio / Playback", "🎧")
+    elif ext in ("rar", "zip", "7z", "tar", "gz"):
+        return ("[PACOTE]", "Coletânea Compactada", "📦")
+    elif ext in ("docx", "doc", "odt", "txt"):
+        return ("[TEXTO]", "Texto / Cifra", "📄")
+    else:
+        return ("[ARQ]", "Arquivo de Partitura", "🎼")
 
 
 def get_channel_invite_link(cfg: dict, channel_id: int | str, channel_username: str = "") -> str:
