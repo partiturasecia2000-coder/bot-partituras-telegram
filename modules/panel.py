@@ -144,57 +144,32 @@ def parse_time_string_to_seconds(text: str) -> int | None:
 # =====================================================================
 
 def generate_page_1(chat_title: str, cfg: dict):
-    w_on = cfg.get("welcome", {}).get("enabled", True)
-    s_on = cfg.get("antispam", {}).get("enabled", True)
-    f_on = cfg.get("antiflood", {}).get("enabled", True)
-    rec_count = len(cfg.get("recurring_messages", []))
-    sched_count = len([x for x in cfg.get("scheduled_transmissions", []) if x.get("status") == "pending"])
-    resp_count = len(cfg.get("auto_responses", []))
-    lk_on = cfg.get("antispam", {}).get("block_links", True)
-    grp_count = len(cfg.get("linked_groups", []))
-    chn_count = len(cfg.get("linked_channels", []))
     acervo_on = cfg.get("acervo_group_auto_reply", False)
 
-    text = (
-        "🎼 ═══════════════════ 🎼\n"
-        "   *MAESTRO BOT — PAINEL PRINCIPAL*\n"
-        "🎼 ═══════════════════ 🎼\n\n"
-        f"🏛️ *Chat Ativo:* `{chat_title}`\n"
-        "✨ *Status Geral:* Sistema harmônico e operacional\n\n"
-        "Toque em uma seção abaixo para orquestrar as configurações:"
-    )
+    lines = [
+        "🎼 ══════════════════════════ 🎼",
+        "   *MAESTRO BOT — PAINEL PRINCIPAL*",
+        "🎼 ══════════════════════════ 🎼\n",
+        f"🏛️ *Chat Ativo:* `{chat_title}`",
+        "✨ *Status Geral:* Sistema harmônico e operacional\n",
+        "Toque em uma central temática abaixo para orquestrar as configurações:"
+    ]
+    text = "\n".join(lines)
 
     keyboard = [
         [
-            InlineKeyboardButton("📢 Nova Transmissão ▾", callback_data="cfg:wiz:start"),
-            InlineKeyboardButton(f"🗓️ Agendados ({sched_count})", callback_data="cfg:sched:list")
+            InlineKeyboardButton("🧹 Central de Limpeza ▾", callback_data="cfg:hub:clean"),
+            InlineKeyboardButton("🛡️ Segurança & Moderação ▾", callback_data="cfg:hub:security")
         ],
         [
-            InlineKeyboardButton("📜 Regras", callback_data="cfg:sub:rules"),
-            InlineKeyboardButton(f"🛡️ Anti-Spam {status_icon(s_on)}", callback_data="cfg:sub:antispam")
+            InlineKeyboardButton("👋 Boas-Vindas & Entrada ▾", callback_data="cfg:hub:welcome"),
+            InlineKeyboardButton(f"🎼 Acervo Musical {status_icon(acervo_on)} ▾", callback_data="cfg:sub:acervo")
         ],
         [
-            InlineKeyboardButton(f"💬 Boas-Vindas {status_icon(w_on)}", callback_data="cfg:sub:welcome"),
-            InlineKeyboardButton(f"🌊 Anti-Flood {status_icon(f_on)}", callback_data="cfg:sub:antiflood")
+            InlineKeyboardButton("📢 Mensagens & Transmissões ▾", callback_data="cfg:hub:messages"),
+            InlineKeyboardButton("⚙️ Sistema & Comunidade ▾", callback_data="cfg:hub:system")
         ],
         [
-            InlineKeyboardButton(f"🤖 Regex ({resp_count})", callback_data="cfg:resp:list"),
-            InlineKeyboardButton(f"⏱️ Repetidas ({rec_count})", callback_data="cfg:rec:list")
-        ],
-        [
-            InlineKeyboardButton(f"🔗 Bloquear Links {status_icon(lk_on)}", callback_data="cfg:toggle:links"),
-            InlineKeyboardButton("🔤 Palavras Proibidas", callback_data="cfg:sub:banned")
-        ],
-        [
-            InlineKeyboardButton(f"🌐 Chats ({grp_count}G/{chn_count}C)", callback_data="cfg:chats:list"),
-            InlineKeyboardButton("🗑️ Limpar Chat", callback_data="cfg:sub:clean")
-        ],
-        [
-            InlineKeyboardButton("🛡️ Whitelist & Links ▾", callback_data="cfg:sub:whitelist_hub"),
-            InlineKeyboardButton(f"🎼 Acervo Musical {status_icon(acervo_on)}", callback_data="cfg:sub:acervo")
-        ],
-        [
-            InlineKeyboardButton("🎛️ Avançado ▶", callback_data="cfg:page:2"),
             InlineKeyboardButton("✅ Concluir Orquestração", callback_data="cfg:close")
         ]
     ]
@@ -202,72 +177,228 @@ def generate_page_1(chat_title: str, cfg: dict):
     return text, InlineKeyboardMarkup(keyboard)
 
 def generate_page_2(chat_title: str, cfg: dict):
-    inv_on = cfg.get("antispam", {}).get("block_telegram_invites", True)
-    fwd_on = cfg.get("antispam", {}).get("block_forwards", True)
+    """Redirecionamento transparente de links legados para a central de sistema."""
+    return generate_hub_system(cfg)
+
+def generate_hub_clean(cfg: dict):
     del_serv = cfg.get("welcome", {}).get("delete_service_messages", True)
-    del_w_sec = cfg.get("welcome", {}).get("delete_welcome_after_seconds", 600)
-    rep_filter_on = cfg.get("antirepeat", {}).get("enabled", True)
-    rep_hours = cfg.get("antirepeat", {}).get("time_window_hours", 2)
-    rep_win_str = f"{rep_hours}h" if rep_hours >= 1 else "5 min"
-    has_logs = bool(cfg.get("log_channel_id"))
-    cap_on = cfg.get("captcha", {}).get("enabled", False)
-    jr_on = cfg.get("join_requests", {}).get("auto_approve", False)
-    clean_on = cfg.get("command_cleanup", {}).get("delete_admin_commands", True)
-    tz_label = get_timezone_label(cfg)
-
-    nm = cfg.get("night_mode", {})
-    nm_on = nm.get("enabled", False)
-
     pin_serv = cfg.get("delete_pinned_service_messages", True)
+    cc = cfg.get("command_cleanup", {})
+    clean_admin = cc.get("delete_admin_commands", True)
+    clean_user = cc.get("delete_non_admin_commands", True)
+    clean_all = clean_admin and clean_user
 
-    text = (
-        "🎼 ═══════════════════ 🎼\n"
-        "   *MAESTRO BOT — AVANÇADO (Pág. 2)*\n"
-        "🎼 ═══════════════════ 🎼\n\n"
-        f"🏛️ *Chat Ativo:* `{chat_title}`\n"
-        f"🕒 *Fuso Ativo:* `{tz_label}`\n"
-        f"⏱️ *Auto-Apagar Boas-Vindas:* `{format_time_label(del_w_sec)}`\n\n"
-        "Módulos avançados de temporização, segurança e limpeza:"
-    )
+    lines = [
+        "🧹 ══════════════════════════ 🧹",
+        "   *CENTRAL DE LIMPEZA E FAXINA*",
+        "🧹 ══════════════════════════ 🧹\n",
+        "Mantenha seus grupos 100% limpos e livres de poluição visual:\n",
+        f"• 🚪 *Limpar Entradas/Saídas:* {status_icon(del_serv)}",
+        f"• 📌 *Limpar Avisos de Fixados:* {status_icon(pin_serv)}",
+        f"• 🧹 *Limpar Comandos (/):* {status_icon(clean_all)}",
+        "• 🗑️ *Faxina Rápida de Mensagens do Chat*\n",
+        "Toque nos botões abaixo para alternar ou configurar:"
+    ]
+    text = "\n".join(lines)
 
-    keyboard = [
-        [
-            InlineKeyboardButton(f"🌙 Modo Noturno {status_icon(nm_on)}", callback_data="cfg:sub:nightmode"),
-            InlineKeyboardButton(f"🧩 CAPTCHA {status_icon(cap_on)}", callback_data="cfg:toggle:captcha")
-        ],
-        [
-            InlineKeyboardButton(f"📥 Auto-Aprovar {status_icon(jr_on)}", callback_data="cfg:toggle:join_req"),
-            InlineKeyboardButton(f"🛡️ Anti-Repetição {status_icon(rep_filter_on)}", callback_data="cfg:toggle:user_repeat")
-        ],
-        [
-            InlineKeyboardButton(f"⏱️ Auto-Apagar Boas-Vindas ({format_time_label(del_w_sec)}) ▾", callback_data="cfg:sub:wtime:general")
-        ],
-        [
-            InlineKeyboardButton("🕒 Fuso Horário ▾", callback_data="cfg:sub:timezone"),
-            InlineKeyboardButton(f"⏱️ Janela: {rep_win_str}", callback_data="cfg:cycle:repeat_window")
-        ],
+    kb = [
         [
             InlineKeyboardButton(f"🚪 Limpar Entradas {status_icon(del_serv)}", callback_data="cfg:toggle:service_msg"),
             InlineKeyboardButton(f"📌 Limpar Fixados {status_icon(pin_serv)}", callback_data="cfg:toggle:pin_service_msg")
         ],
         [
-            InlineKeyboardButton(f"🧹 Limpar Comandos {status_icon(clean_on)}", callback_data="cfg:sub:cmd_clean"),
-            InlineKeyboardButton(f"📡 Canal Logs {status_icon(has_logs)}", callback_data="cfg:sub:logs")
+            InlineKeyboardButton("🧹 Limpeza de Comandos (/comando) ▾", callback_data="cfg:sub:cmd_clean")
         ],
         [
-            InlineKeyboardButton(f"📢 Travar Convites {status_icon(inv_on)}", callback_data="cfg:toggle:invites"),
-            InlineKeyboardButton(f"⏩ Travar Encaminhados {status_icon(fwd_on)}", callback_data="cfg:toggle:forwards")
+            InlineKeyboardButton("🗑️ Faxina Rápida de Chat (/limpar) ▾", callback_data="cfg:sub:clean_help")
         ],
         [
-            InlineKeyboardButton("◀ Voltar à Pág 1", callback_data="cfg:page:1"),
+            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
+        ]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+def generate_hub_security(cfg: dict):
+    s = cfg.get("antispam", {})
+    enabled = s.get("enabled", True)
+    links = s.get("block_links", True)
+    invites = s.get("block_telegram_invites", True)
+    forwards = s.get("block_forwards", True)
+    banned_list = s.get("banned_words", [])
+    action = s.get("banned_words_action", "warn")
+    action_label = "Ban Imediato" if action == "ban" else ("3 Advertências" if action == "warning" else "Aviso")
+
+    flood_on = cfg.get("antiflood", {}).get("enabled", True)
+    rep_filter_on = cfg.get("antirepeat", {}).get("enabled", True)
+    cap_on = cfg.get("captcha", {}).get("enabled", False)
+
+    lines = [
+        "🛡️ ══════════════════════════ 🛡️",
+        "   *SEGURANÇA & MODERAÇÃO*",
+        "🛡️ ══════════════════════════ 🛡️\n",
+        "Proteção contra invasores, spammers, links e mensagens proibidas:\n",
+        f"• 🛡️ *Anti-Spam Geral:* {status_icon(enabled)}",
+        f"• 🔗 *Bloquear Links Web:* {status_icon(links)}",
+        f"• 📢 *Travar Convites Telegram (t.me):* {status_icon(invites)}",
+        f"• ⏩ *Travar Encaminhados de Canais:* {status_icon(forwards)}",
+        f"• 🔤 *Palavras Proibidas:* `{len(banned_list)}` termos ({action_label})",
+        f"• 🌊 *Anti-Flood:* {status_icon(flood_on)}",
+        f"• 🔁 *Anti-Repetição:* {status_icon(rep_filter_on)}",
+        f"• 🧩 *CAPTCHA de Entrada:* {status_icon(cap_on)}\n"
+    ]
+    text = "\n".join(lines)
+
+    kb = [
+        [
+            InlineKeyboardButton(f"🛡️ Anti-Spam {status_icon(enabled)}", callback_data="cfg:toggle:antispam"),
+            InlineKeyboardButton(f"🔗 Bloquear Links {status_icon(links)}", callback_data="cfg:toggle:links")
+        ],
+        [
+            InlineKeyboardButton(f"📢 Travar Convites {status_icon(invites)}", callback_data="cfg:toggle:invites"),
+            InlineKeyboardButton(f"⏩ Encaminhados {status_icon(forwards)}", callback_data="cfg:toggle:forwards")
+        ],
+        [
+            InlineKeyboardButton(f"🔤 Palavras Proibidas ({len(banned_list)}) ▾", callback_data="cfg:sub:banned"),
+            InlineKeyboardButton(f"🌊 Anti-Flood {status_icon(flood_on)} ▾", callback_data="cfg:sub:antiflood")
+        ],
+        [
+            InlineKeyboardButton(f"🔁 Anti-Repetição {status_icon(rep_filter_on)}", callback_data="cfg:toggle:user_repeat"),
+            InlineKeyboardButton(f"🧩 CAPTCHA {status_icon(cap_on)}", callback_data="cfg:toggle:captcha")
+        ],
+        [
+            InlineKeyboardButton("🛡️ Whitelist & Links Autorizados ▾", callback_data="cfg:sub:whitelist_hub")
+        ],
+        [
+            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
+        ]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+def generate_hub_welcome(cfg: dict):
+    w_on = cfg.get("welcome", {}).get("enabled", True)
+    del_w_sec = cfg.get("welcome", {}).get("delete_welcome_after_seconds", 600)
+    jr_on = cfg.get("join_requests", {}).get("auto_approve", False)
+    cap_on = cfg.get("captcha", {}).get("enabled", False)
+
+    lines = [
+        "👋 ══════════════════════════ 👋",
+        "   *BOAS-VINDAS & ENTRADA DE MEMBROS*",
+        "👋 ══════════════════════════ 👋\n",
+        "Recepcione novos membros com mensagens personalizadas e aprove inscrições:\n",
+        f"• 👋 *Mensagem de Boas-Vindas:* {status_icon(w_on)}",
+        f"• ⏱️ *Auto-Apagar Boas-Vindas:* `{format_time_label(del_w_sec)}`",
+        f"• 📥 *Auto-Aprovar Solicitações:* {status_icon(jr_on)}",
+        f"• 🧩 *CAPTCHA Anti-Bot:* {status_icon(cap_on)}\n"
+    ]
+    text = "\n".join(lines)
+
+    kb = [
+        [
+            InlineKeyboardButton(f"💬 Boas-Vindas {status_icon(w_on)}", callback_data="cfg:toggle:welcome"),
+            InlineKeyboardButton("✏️ Personalizar Mensagem ▾", callback_data="cfg:sub:welcome")
+        ],
+        [
+            InlineKeyboardButton(f"⏱️ Auto-Apagar ({format_time_label(del_w_sec)}) ▾", callback_data="cfg:sub:wtime:general")
+        ],
+        [
+            InlineKeyboardButton(f"📥 Auto-Aprovar Entradas {status_icon(jr_on)}", callback_data="cfg:toggle:join_req"),
+            InlineKeyboardButton(f"🧩 CAPTCHA {status_icon(cap_on)}", callback_data="cfg:toggle:captcha")
+        ],
+        [
+            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
+        ]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+def generate_hub_messages(cfg: dict):
+    sched_count = len([x for x in cfg.get("scheduled_transmissions", []) if x.get("status") == "pending"])
+    rec_count = len(cfg.get("recurring_messages", []))
+    resp_count = len(cfg.get("auto_responses", []))
+
+    lines = [
+        "📢 ══════════════════════════ 📢",
+        "   *MENSAGENS & COMUNICAÇÃO*",
+        "📢 ══════════════════════════ 📢\n",
+        "Envie comunicados, agende transmissões e configure respostas automáticas:\n",
+        f"• 📢 *Transmissões Agendadas:* `{sched_count}` pendente(s)",
+        f"• ⏱️ *Mensagens Recorrentes:* `{rec_count}` ativa(s)",
+        f"• 🤖 *Auto-Respostas (Regex):* `{resp_count}` cadastrada(s)",
+        "• 📜 *Regras Oficiais do Grupo*\n"
+    ]
+    text = "\n".join(lines)
+
+    kb = [
+        [
+            InlineKeyboardButton("📢 Nova Transmissão ▾", callback_data="cfg:wiz:start"),
+            InlineKeyboardButton(f"🗓️ Agendados ({sched_count})", callback_data="cfg:sched:list")
+        ],
+        [
+            InlineKeyboardButton(f"⏱️ Repetidas / Cronograma ({rec_count})", callback_data="cfg:rec:list"),
+            InlineKeyboardButton(f"🤖 Auto-Respostas ({resp_count})", callback_data="cfg:resp:list")
+        ],
+        [
+            InlineKeyboardButton("📜 Regras do Grupo ▾", callback_data="cfg:sub:rules")
+        ],
+        [
+            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
+        ]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+def generate_hub_system(cfg: dict):
+    groups = cfg.get("linked_groups", [])
+    channels = cfg.get("linked_channels", [])
+    has_logs = bool(cfg.get("log_channel_id"))
+    nm = cfg.get("night_mode", {})
+    nm_on = nm.get("enabled", False)
+    tz_label = get_timezone_label(cfg)
+
+    lines = [
+        "⚙️ ══════════════════════════ ⚙️",
+        "   *SISTEMA & COMUNIDADE*",
+        "⚙️ ══════════════════════════ ⚙️\n",
+        "Gerencie as salas integradas, auditoria e preferências gerais:\n",
+        f"• 👥 *Grupos Vinculados:* `{len(groups)}` | 📢 *Canais:* `{len(channels)}`",
+        f"• 🌙 *Modo Noturno (Silêncio):* {status_icon(nm_on)}",
+        f"• 📡 *Canal de Logs de Auditoria:* {status_icon(has_logs)}",
+        f"• 🕒 *Fuso Horário:* `{tz_label}`\n"
+    ]
+    text = "\n".join(lines)
+
+    kb = [
+        [
+            InlineKeyboardButton(f"🌐 Chats ({len(groups)}G/{len(channels)}C) ▾", callback_data="cfg:chats:list"),
+            InlineKeyboardButton("🛡️ Whitelist & Links ▾", callback_data="cfg:sub:whitelist_hub")
+        ],
+        [
+            InlineKeyboardButton(f"🌙 Modo Noturno {status_icon(nm_on)} ▾", callback_data="cfg:sub:nightmode"),
+            InlineKeyboardButton(f"📡 Canal de Logs {status_icon(has_logs)} ▾", callback_data="cfg:sub:logs")
+        ],
+        [
+            InlineKeyboardButton(f"🕒 Fuso Horário ({tz_label}) ▾", callback_data="cfg:sub:timezone"),
             InlineKeyboardButton("ℹ️ Versão & Docs", callback_data="cfg:sub:docs")
         ],
         [
-            InlineKeyboardButton("✅ Concluir Orquestração", callback_data="cfg:close")
+            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
         ]
     ]
+    return text, InlineKeyboardMarkup(kb)
 
-    return text, InlineKeyboardMarkup(keyboard)
+def generate_sub_clean_help():
+    lines = [
+        "🗑️ *FAXINA RÁPIDA DE MENSAGENS NO CHAT*\n",
+        "Para apagar mensagens em lote no grupo rapidamente, utilize o comando `/limpar` diretamente no grupo:\n",
+        "• `/limpar 10` — Apaga as últimas 10 mensagens",
+        "• `/limpar 50` — Apaga as últimas 50 mensagens",
+        "• `/limpar 100` — Apaga as últimas 100 mensagens\n",
+        "💡 *Como funciona:*",
+        "Apenas administradores podem acionar esse comando. O bot apaga as mensagens instantaneamente e depois apaga o próprio comando!"
+    ]
+    text = "\n".join(lines)
+    kb = [
+        [InlineKeyboardButton("◀ Voltar à Central de Limpeza", callback_data="cfg:hub:clean")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
 
 def generate_chats_list_page(cfg: dict):
     groups = cfg.get("linked_groups", [])
@@ -457,7 +588,7 @@ def generate_sub_docs():
             InlineKeyboardButton("🎓 Central de Tutoriais", callback_data="tut:main"),
             InlineKeyboardButton("📋 Ver Todos Comandos", callback_data="help:cat:all")
         ],
-        [InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:2")]
+        [InlineKeyboardButton("◀ Voltar à Central de Limpeza", callback_data="cfg:hub:clean")]
     ])
     return text, markup
 
@@ -4042,7 +4173,7 @@ class InteractivePanelHandler:
                 await query.edit_message_text(text, reply_markup=markup)
             return
 
-        # Navegação de páginas
+        # Navegação de Centrais Temáticas (Hubs) e Painel Principal
         if data == "cfg:page:1":
             await query.answer()
             text, markup = generate_page_1(title, cfg)
@@ -4051,7 +4182,43 @@ class InteractivePanelHandler:
 
         if data == "cfg:page:2":
             await query.answer()
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_system(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:hub:clean":
+            await query.answer()
+            text, markup = generate_hub_clean(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:hub:security":
+            await query.answer()
+            text, markup = generate_hub_security(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:hub:welcome":
+            await query.answer()
+            text, markup = generate_hub_welcome(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:hub:messages":
+            await query.answer()
+            text, markup = generate_hub_messages(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:hub:system":
+            await query.answer()
+            text, markup = generate_hub_system(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:sub:clean_help":
+            await query.answer()
+            text, markup = generate_sub_clean_help()
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -4087,7 +4254,9 @@ class InteractivePanelHandler:
             return
 
         if data == "cfg:sub:clean":
-            await query.answer("Use o comando /limpar [quantidade] no chat (ex: /limpar 10)", show_alert=True)
+            await query.answer()
+            text, markup = generate_hub_clean(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
         if data == "cfg:sub:logs":
@@ -5428,7 +5597,7 @@ class InteractivePanelHandler:
             cfg["antispam"]["block_links"] = not cur
             save_config(cfg)
             await query.answer(f"Bloqueio de links: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_1(title, cfg)
+            text, markup = generate_hub_security(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5437,7 +5606,7 @@ class InteractivePanelHandler:
             cfg["antispam"]["block_telegram_invites"] = not cur
             save_config(cfg)
             await query.answer(f"Bloqueio de convites: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_security(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5446,7 +5615,7 @@ class InteractivePanelHandler:
             cfg["antispam"]["block_forwards"] = not cur
             save_config(cfg)
             await query.answer(f"Bloqueio de encaminhamentos: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_security(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5455,7 +5624,7 @@ class InteractivePanelHandler:
             cfg["antirepeat"]["enabled"] = not cur
             save_config(cfg)
             await query.answer(f"Filtro anti-repetição de membros: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_security(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5473,7 +5642,7 @@ class InteractivePanelHandler:
             cfg["welcome"]["delete_service_messages"] = not cur
             save_config(cfg)
             await query.answer(f"Limpar msg de entrada: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_clean(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5481,8 +5650,17 @@ class InteractivePanelHandler:
             cur = cfg.get("delete_pinned_service_messages", True)
             cfg["delete_pinned_service_messages"] = not cur
             save_config(cfg)
-            await query.answer(f"Limpar avisos de fixado: {'Ativado' if not cur else 'Desativado'}", show_alert=True)
-            text, markup = generate_page_2(title, cfg)
+            await query.answer(f"Limpar avisos de fixado: {'Ativado' if not cur else 'Desativado'}")
+            text, markup = generate_hub_clean(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:toggle:welcome":
+            cur = cfg.setdefault("welcome", {}).get("enabled", True)
+            cfg["welcome"]["enabled"] = not cur
+            save_config(cfg)
+            await query.answer(f"Boas-vindas: {'Ativadas' if not cur else 'Desativadas'}")
+            text, markup = generate_hub_welcome(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5491,7 +5669,7 @@ class InteractivePanelHandler:
             cfg["captcha"]["enabled"] = not cur
             save_config(cfg)
             await query.answer(f"Anti-Bot CAPTCHA: {'Ativado' if not cur else 'Desativado'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_security(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -5500,7 +5678,7 @@ class InteractivePanelHandler:
             cfg["join_requests"]["auto_approve"] = not cur
             save_config(cfg)
             await query.answer(f"Auto-aprovação de entrada: {'Ativada' if not cur else 'Desativada'}")
-            text, markup = generate_page_2(title, cfg)
+            text, markup = generate_hub_welcome(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
             return
 
