@@ -2589,6 +2589,66 @@ class AdminCommandHandler:
 
         await query.answer()
 
+    async def cmd_setlink(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Define o link de entrada/convite de um canal do acervo. Uso: /setlink <id_ou_nome> <url>"""
+        if not await self._require_admin(update):
+            return
+        await self._clean_admin_trigger(update)
+        msg = update.effective_message
+        args = context.args
+
+        from modules.inline_acervo import generate_channel_links_menu_text_and_kb
+        if not args:
+            text, markup = generate_channel_links_menu_text_and_kb()
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+            return
+
+        cfg = load_config()
+        if "channel_invite_links" not in cfg:
+            cfg["channel_invite_links"] = {}
+
+        if len(args) >= 2:
+            target = args[0]
+            link = args[1].strip()
+            from modules.inline_acervo import get_all_acervo_channels
+            channels = get_all_acervo_channels(cfg)
+            matched_id = None
+            matched_title = target
+
+            for ch in channels:
+                cid_str = str(ch.get("channel_id", ""))
+                cid_norm = cid_str.replace("-100", "").replace("-", "")
+                tgt_norm = target.replace("-100", "").replace("-", "")
+                if cid_str == target or cid_norm == tgt_norm or target.lower() in (ch.get("channel_title") or "").lower():
+                    matched_id = ch["channel_id"]
+                    matched_title = ch.get("channel_title") or target
+                    break
+
+            if not matched_id and (target.startswith("-100") or target.lstrip("-").isdigit()):
+                matched_id = int(target)
+
+            if matched_id:
+                cfg["channel_invite_links"][str(matched_id)] = link
+                for lch in cfg.get("linked_channels", []):
+                    if str(lch.get("id")) == str(matched_id):
+                        lch["invite_link"] = link
+                save_config(cfg)
+                await msg.reply_text(
+                    f"✅ <b>Link Salvo com Sucesso!</b>\n\n"
+                    f"📢 <b>Canal:</b> {html.escape(matched_title)} (<code>{matched_id}</code>)\n"
+                    f"🔗 <b>Link:</b> <code>{html.escape(link)}</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+
+        text, markup = generate_channel_links_menu_text_and_kb()
+        await msg.reply_text(
+            "⚠️ <b>Uso:</b> <code>/setlink &lt;id_ou_nome_do_canal&gt; &lt;link_de_convite&gt;</code>\n\n"
+            "Ou selecione o canal diretamente no menu abaixo:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
+
     async def cmd_autodel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Abre diretamente o menu de configuração de auto-apagar da busca inline."""
         if not await self._require_admin(update):

@@ -2514,6 +2514,38 @@ class InteractivePanelHandler:
         if await handle_whitelist_input(self, update, context):
             return True
 
+        if action == "acervo:set_channel_link":
+            target_id = state.get("target_id")
+            channel_title = state.get("channel_title", "Canal")
+            raw_url = msg.text.strip() if msg.text else ""
+            if not (raw_url.startswith("http://") or raw_url.startswith("https://") or raw_url.startswith("@")):
+                await msg.reply_text("❌ Por favor, envie um link válido (ex: <code>https://t.me/+AbCdEfGh</code> ou <code>@seucanal</code>), ou digite /cancelar.", parse_mode=ParseMode.HTML)
+                return True
+
+            cfg = load_config()
+            if "channel_invite_links" not in cfg:
+                cfg["channel_invite_links"] = {}
+            cfg["channel_invite_links"][str(target_id)] = raw_url
+
+            for ch in cfg.get("linked_channels", []):
+                if str(ch.get("id")) == str(target_id):
+                    ch["invite_link"] = raw_url
+
+            save_config(cfg)
+            del self.pending_inputs[user.id]
+
+            from modules.inline_acervo import generate_channel_links_menu_text_and_kb
+            text, markup = generate_channel_links_menu_text_and_kb()
+            await msg.reply_text(
+                f"✅ <b>Link de Entrada Salvo com Sucesso!</b>\n\n"
+                f"📢 <b>Canal:</b> {html.escape(channel_title)}\n"
+                f"🔗 <b>Link:</b> <code>{html.escape(raw_url)}</code>\n\n"
+                f"Agora quando alguém buscar uma partitura deste canal, o botão <b>'1º Entrar no Canal'</b> levará para este link!",
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
+            )
+            return True
+
         # -------------------------------------------------------------
         # 1. TEXTO / FOTO / BOTÕES DE BOAS-VINDAS (modules/welcome_ui.py)
         # -------------------------------------------------------------

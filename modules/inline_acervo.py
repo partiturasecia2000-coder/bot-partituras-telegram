@@ -636,6 +636,23 @@ class AcervoDatabase:
             logger.error(f"Erro ao obter item {item_id} do acervo: {e}")
             return None
 
+    def get_channels_summary(self) -> list:
+        """Retorna resumo de todos os canais que possuem partituras no acervo."""
+        try:
+            with self._get_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("""
+                    SELECT channel_id, channel_title, channel_username, COUNT(*) as qtd
+                    FROM acervo
+                    WHERE channel_id IS NOT NULL AND channel_id != 0
+                    GROUP BY channel_id
+                    ORDER BY qtd DESC;
+                """).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Erro ao obter canais do acervo: {e}")
+            return []
+
     def get_stats(self) -> dict:
         """Retorna estatísticas gerais do acervo global."""
         try:
@@ -1359,6 +1376,10 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
             post_url = item.get("post_url", "")
             file_name = item.get("file_name", "partitura.pdf")
 
+            channel_id = item.get("channel_id")
+            channel_username = item.get("channel_username", "")
+            channel_link = get_channel_invite_link(cfg, channel_id, channel_username)
+
             desc_parts = [f"📢 {chan_title[:24]}"]
             if file_size_str:
                 desc_parts.append(file_size_str)
@@ -1372,13 +1393,16 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
             )
 
             buttons = []
-            row = []
+            # 1. Botão para ENTRAR no canal específico onde o arquivo está guardado
+            if channel_link:
+                buttons.append([InlineKeyboardButton(f"📢 1º Entrar no Canal ({chan_title[:16]})", url=channel_link)])
+
+            # 2. Botão para BAIXAR / ABRIR o arquivo naquele canal
             if post_url:
-                row.append(InlineKeyboardButton("📢 Baixar / Ver no Canal", url=post_url))
-            if chatlist_url:
-                row.append(InlineKeyboardButton("📁 Nossos Canais", url=chatlist_url))
-            if row:
-                buttons.append(row)
+                buttons.append([InlineKeyboardButton("📥 2º Baixar Partitura", url=post_url)])
+            elif not channel_link:
+                if chatlist_url:
+                    buttons.append([InlineKeyboardButton("📁 Nossos Canais", url=chatlist_url)])
 
             markup = InlineKeyboardMarkup(buttons)
 
@@ -1407,18 +1431,21 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
                         )
                     )
             else:
-                # Item indexado por link/histórico: envia card direto no grupo sem explicação
+                # Item indexado por link/histórico: envia card explícito com os 2 passos
                 card_text = (
                     f"🎼 <b>{html.escape(title)}</b>\n"
                     f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n"
                     f"📢 <b>Origem:</b> {html.escape(chan_title)}\n\n"
+                    f"⚠️ <b>Atenção:</b> Este canal é privado. Para conseguir baixar e abrir a partitura, você <b>precisa entrar no canal primeiro</b>!\n"
+                    f"1️⃣ Toque em <b>'1º Entrar no Canal'</b> para se inscrever.\n"
+                    f"2️⃣ Depois toque em <b>'2º Baixar Partitura'</b> para acessar o arquivo!\n\n"
                     f"🎵 <i>Enviado via @{bot_username}</i>"
                 )
                 inline_results.append(
                     InlineQueryResultArticle(
                         id=f"art_{item_id}",
                         title=title,
-                        description=f"📢 {chan_title} • Toque para enviar no grupo",
+                        description=f"📢 {chan_title} • 1º Entrar no Canal | 2º Baixar",
                         input_message_content=InputTextMessageContent(card_text, parse_mode=ParseMode.HTML),
                         reply_markup=markup
                     )
@@ -1436,6 +1463,111 @@ async def handle_inline_acervo_query(update: Update, context: ContextTypes.DEFAU
         )
     except Exception as e:
         logger.error(f"Erro ao responder inline_query: {e}")
+
+
+def get_channel_invite_link(cfg: dict, channel_id: int | str, channel_username: str = "") -> str:
+    """Retorna o link de convite/entrada específico de um canal do acervo."""
+    if not cfg:
+        return ""
+
+    cid_str = str(channel_id).replace("-100", "").replace("-", "")
+
+    # 1. Verifica no mapa customizado channel_invite_links
+    custom_map = cfg.get("channel_invite_links", {})
+    if str(channel_id) in custom_map and custom_map[str(channel_id)]:
+        return custom_map[str(channel_id)]
+    if cid_str in custom_map and custom_map[cid_str]:
+        return custom_map[cid_str]
+
+    # 2. Verifica nos linked_channels do config
+    for ch in cfg.get("linked_channels", []):
+        ch_id_norm = str(ch.get("id", "")).replace("-100", "").replace("-", "")
+        if ch_id_norm == cid_str:
+            if ch.get("invite_link"):
+                return ch.get("invite_link")
+            if ch.get("username"):
+                return f"https://t.me/{ch.get('username').lstrip('@')}"
+
+    # 3. Se tiver username público no item do banco
+    if channel_username and channel_username.strip():
+        u = channel_username.strip().lstrip("@")
+        return f"https://t.me/{u}"
+
+    # 4. Fallback: se houver pasta de canais geral configurada
+    return cfg.get("acervo_chatlist_url", "")
+
+
+def get_all_acervo_channels(cfg: dict) -> list:
+    """Retorna lista unificada de todos os canais do acervo (banco + vinculados)."""
+    db_channels = acervo_db.get_channels_summary()
+    seen_ids = set()
+    result = []
+
+    for ch in db_channels:
+        cid = ch["channel_id"]
+        seen_ids.add(str(cid))
+        seen_ids.add(str(cid).replace("-100", "").replace("-", ""))
+        result.append(ch)
+
+    for lch in cfg.get("linked_channels", []):
+        cid = lch.get("id")
+        norm = str(cid).replace("-100", "").replace("-", "")
+        if str(cid) not in seen_ids and norm not in seen_ids:
+            seen_ids.add(str(cid))
+            result.append({
+                "channel_id": cid,
+                "channel_title": lch.get("title", f"Canal {cid}"),
+                "channel_username": lch.get("username", ""),
+                "qtd": 0
+            })
+    return result
+
+
+def generate_channel_links_menu_text_and_kb():
+    """Gera o menu com a lista de canais e seus links de convite para configuração."""
+    cfg = load_config()
+    channels = get_all_acervo_channels(cfg)
+    fallback_chatlist = cfg.get("acervo_chatlist_url", "https://t.me/addlist/H5UNPP0h4FI3ZTNh")
+
+    lines = [
+        "🔗 ════════════════════════ 🔗",
+        "   <b>LINKS DE ENTRADA DOS CANAIS</b>",
+        "🔗 ════════════════════════ 🔗\n",
+        "Configure o link de entrada de cada canal do acervo. Quando alguém buscar uma partitura, "
+        "o bot enviará o botão com o link para a pessoa <b>entrar no canal específico daquele arquivo</b>!\n"
+    ]
+
+    kb = []
+    kb.append([InlineKeyboardButton("🔄 Detectar Links Automaticamente", callback_data="acervo:autodetect_links")])
+
+    if not channels:
+        lines.append("⚠️ <i>Nenhum canal indexado no acervo ainda.</i>\n")
+    else:
+        for ch in channels:
+            cid = ch["channel_id"]
+            title = ch.get("channel_title") or f"Canal {cid}"
+            qtd = ch.get("qtd", 0)
+
+            link = get_channel_invite_link(cfg, cid, ch.get("channel_username", ""))
+
+            if link and link != fallback_chatlist:
+                status_icon = "✅"
+                link_display = f"<code>{html.escape(link)}</code>"
+            else:
+                status_icon = "⚠️"
+                link_display = "<i>Sem link próprio (usando link geral)</i>"
+
+            lines.append(f"📢 <b>{html.escape(title)}</b> ({qtd} partituras)")
+            lines.append(f"   {status_icon} Link: {link_display}\n")
+
+            kb.append([
+                InlineKeyboardButton(f"🔗 Configurar: {title[:20]}", callback_data=f"acervo:edit_link:{cid}")
+            ])
+
+    lines.append("💡 <i>Toque em um canal para colar o link (t.me/+...), ou use /setlink.</i>")
+    kb.append([InlineKeyboardButton("◀ Voltar ao Acervo", callback_data="acervo:menu")])
+
+    return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
 def generate_inline_autodel_menu_text_and_kb():
@@ -1553,6 +1685,7 @@ def generate_acervo_dashboard_text_and_kb():
 
     kb = [
         [InlineKeyboardButton(f"🗑️ Apagar Busca Inline: {inline_autodel_label}", callback_data="acervo:inline_autodel_menu")],
+        [InlineKeyboardButton("🔗 Links de Entrada dos Canais", callback_data="acervo:channel_links_menu")],
         [InlineKeyboardButton(f"🤖 Auto-Resposta: {auto_reply_badge}", callback_data="acervo:toggle:autoreply")],
         [InlineKeyboardButton("🔍 Testar Busca Agora", switch_inline_query_current_chat="")],
         [InlineKeyboardButton("🧹 Limpar Mensagens de Texto", callback_data="acervo:purge_chatter")],
@@ -1680,6 +1813,82 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         except Exception:
             pass
+        return
+
+    if data == "acervo:channel_links_menu":
+        await query.answer()
+        text, markup = generate_channel_links_menu_text_and_kb()
+        try:
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except Exception:
+            pass
+        return
+
+    if data == "acervo:autodetect_links":
+        await query.answer("Varrendo permissões e gerando links dos canais...", show_alert=False)
+        cfg = load_config()
+        if "channel_invite_links" not in cfg:
+            cfg["channel_invite_links"] = {}
+
+        channels = get_all_acervo_channels(cfg)
+        detected_count = 0
+        failed_channels = []
+
+        for ch in channels:
+            cid = ch["channel_id"]
+            title = ch.get("channel_title") or f"Canal {cid}"
+            try:
+                chat = await context.bot.get_chat(cid)
+                link = chat.invite_link or (f"https://t.me/{chat.username}" if chat.username else None)
+                if not link:
+                    link = await context.bot.export_chat_invite_link(cid)
+                if link:
+                    cfg["channel_invite_links"][str(cid)] = link
+                    for lch in cfg.get("linked_channels", []):
+                        if str(lch.get("id")) == str(cid):
+                            lch["invite_link"] = link
+                    detected_count += 1
+            except Exception as e:
+                failed_channels.append(title)
+                logger.debug(f"Não foi possível auto-detectar link de {title}: {e}")
+
+        save_config(cfg)
+        msg_result = f"✅ Links detectados para {detected_count} canais!"
+        if failed_channels:
+            msg_result += f"\n⚠️ {len(failed_channels)} canais precisam de configuração manual."
+        await query.answer(msg_result[:200], show_alert=True)
+        text, markup = generate_channel_links_menu_text_and_kb()
+        try:
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except Exception:
+            pass
+        return
+
+    if data.startswith("acervo:edit_link:"):
+        c_id = data.split(":")[-1]
+        from modules.panel import panel_handler
+        user = update.effective_user
+        cfg = load_config()
+        channels = get_all_acervo_channels(cfg)
+        chan_title = "Canal"
+        for ch in channels:
+            if str(ch["channel_id"]) == str(c_id):
+                chan_title = ch.get("channel_title", "Canal")
+                break
+
+        panel_handler.pending_inputs[user.id] = {
+            "action": "acervo:set_channel_link",
+            "target_id": c_id,
+            "channel_title": chan_title
+        }
+        await query.answer()
+        await query.message.reply_text(
+            f"🔗 <b>Definir Link de Entrada do Canal:</b>\n"
+            f"📢 <b>{html.escape(chan_title)}</b> (ID: <code>{c_id}</code>)\n\n"
+            f"Envie agora o link de convite deste canal (ex: <code>https://t.me/+AbCdEfGh</code> ou <code>@seucanal</code>):\n"
+            f"<i>(Ou envie /cancelar para desistir)</i>",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if data == "acervo:scan:menu":

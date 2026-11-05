@@ -792,6 +792,7 @@ def main():
     app.add_handler(CommandHandler(["setlog", "log"], admin_cmd_handler.cmd_setlog))
     app.add_handler(CommandHandler(["backup", "exportar"], admin_cmd_handler.cmd_backup))
     app.add_handler(CommandHandler(["autodel", "autoapagar", "autodelete"], admin_cmd_handler.cmd_autodel))
+    app.add_handler(CommandHandler(["setlink", "linkcanal", "linkconvite"], admin_cmd_handler.cmd_setlink))
     app.add_handler(CommandHandler(["restaurar", "restore", "importar"], admin_cmd_handler.cmd_restaurar))
     app.add_handler(CommandHandler(["filtro", "filter"], auto_responder_handler.cmd_filtro))
     app.add_handler(CommandHandler(["filtros", "filters"], auto_responder_handler.cmd_filtros))
