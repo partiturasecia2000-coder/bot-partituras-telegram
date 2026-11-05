@@ -2658,6 +2658,78 @@ class AdminCommandHandler:
         text, markup = generate_inline_autodel_menu_text_and_kb()
         await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
 
+    async def cmd_avisogrupo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Configura ou ativa/desativa os avisos de novas partituras no grupo oficial."""
+        if not await self._require_admin(update):
+            return
+        await self._clean_admin_trigger(update)
+        msg = update.effective_message
+        args = context.args or []
+        cfg = load_config()
+
+        if not args:
+            enabled = cfg.get("acervo_channel_notify_enabled", True)
+            target = cfg.get("acervo_channel_notify_chat", "@partiturasecia")
+            status_text = "🟢 <b>Ativado</b>" if enabled else "🔴 <b>Desativado</b>"
+            await msg.reply_text(
+                f"📢 <b>Avisos de Novas Partituras no Grupo</b>\n\n"
+                f"• <b>Status Atual:</b> {status_text}\n"
+                f"• <b>Grupo Destino:</b> <code>{html.escape(str(target))}</code>\n\n"
+                f"<b>Comandos Rápidos:</b>\n"
+                f"• <code>/avisogrupo on</code> — Ativar avisos automáticos\n"
+                f"• <code>/avisogrupo off</code> — Desativar avisos\n"
+                f"• <code>/avisogrupo https://t.me/partiturasecia</code> — Definir grupo de avisos\n"
+                f"• <code>/avisogrupo teste</code> — Enviar um card de demonstração para o grupo",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        arg = args[0].strip()
+        if arg.lower() in ("on", "ativar", "ligar", "sim", "1"):
+            cfg["acervo_channel_notify_enabled"] = True
+            save_config(cfg)
+            await msg.reply_text("✅ Avisos de novas partituras <b>ATIVADOS</b> no grupo oficial!", parse_mode=ParseMode.HTML)
+            return
+        elif arg.lower() in ("off", "desativar", "desligar", "nao", "não", "0"):
+            cfg["acervo_channel_notify_enabled"] = False
+            save_config(cfg)
+            await msg.reply_text("🛑 Avisos de novas partituras <b>DESATIVADOS</b> no grupo oficial.", parse_mode=ParseMode.HTML)
+            return
+        elif arg.lower() in ("test", "teste", "testar"):
+            from modules.inline_acervo import notify_new_acervo_item_in_group
+            await msg.reply_text("⏳ Enviando card de teste para o grupo...", parse_mode=ParseMode.HTML)
+            res = await notify_new_acervo_item_in_group(
+                bot=context.bot,
+                cfg=cfg,
+                channel_id=cfg.get("main_channel_id", -1001806380183),
+                channel_title="Canal de Demonstração",
+                channel_username="",
+                message_id=1,
+                file_name="Demonstracao - Partitura Exemplo.pdf",
+                title="Partitura Exemplo (Demonstração)",
+                file_type="document",
+                file_size=2450000,
+                force_send=True
+            )
+            if res:
+                await msg.reply_text(f"✅ Card de demonstração enviado com sucesso para <code>{cfg.get('acervo_channel_notify_chat', '@partiturasecia')}</code>!", parse_mode=ParseMode.HTML)
+            else:
+                await msg.reply_text("❌ Não foi possível enviar. Certifique-se de que o bot é administrador no grupo alvo.", parse_mode=ParseMode.HTML)
+            return
+        else:
+            target = arg
+            if "t.me/" in target:
+                target = "@" + target.split("t.me/")[-1].strip().strip("/")
+            cfg["acervo_channel_notify_chat"] = target
+            cfg["acervo_channel_notify_enabled"] = True
+            save_config(cfg)
+            await msg.reply_text(
+                f"✅ <b>Grupo de avisos atualizado!</b>\n\n"
+                f"📢 <b>Novo Destino:</b> <code>{html.escape(target)}</code>\n"
+                f"🟢 Status: <b>Ativado</b>",
+                parse_mode=ParseMode.HTML
+            )
+
     async def cmd_backup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Envia o arquivo config.json atual para o administrador fazer download."""
         msg = update.effective_message

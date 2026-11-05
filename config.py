@@ -141,6 +141,8 @@ DEFAULT_CONFIG = {
     "acervo_group_auto_reply": False,
     "acervo_auto_delete_seconds": 0,  # 0 = Desativado (não apaga respostas de partitura)
     "inline_auto_delete_seconds": 0,  # 0 = Desativado (não apaga respostas inline no grupo)
+    "acervo_channel_notify_enabled": True,  # Avisa no grupo quando entra nova partitura nos canais
+    "acervo_channel_notify_chat": "@partiturasecia",  # Grupo de destino dos avisos
     "main_group_id": None,
     "linked_groups": [],     # Lista de grupos vinculados: [{"id": int, "title": str, "type": str, "linked_at": str}]
     "linked_channels": [],   # Lista de canais vinculados: [{"id": int, "title": str, "username": str, "linked_at": str}]

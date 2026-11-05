@@ -82,6 +82,8 @@
   "scheduled_transmissions": [],
   "auto_responses": [],
   "acervo_group_auto_reply": false,
+  "acervo_channel_notify_enabled": true,
+  "acervo_channel_notify_chat": "@partiturasecia",
   "main_group_id": null,
   "linked_groups": [],
   "linked_channels": [],

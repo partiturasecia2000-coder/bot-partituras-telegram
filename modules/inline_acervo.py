@@ -1536,6 +1536,138 @@ def get_channel_invite_link(cfg: dict, channel_id: int | str, channel_username: 
     return cfg.get("acervo_chatlist_url", "")
 
 
+async def notify_new_acervo_item_in_group(
+    bot,
+    cfg: dict,
+    channel_id: int | str,
+    channel_title: str,
+    channel_username: str,
+    message_id: int,
+    file_name: str,
+    title: str = "",
+    caption: str = "",
+    file_type: str = "document",
+    file_size: int = 0,
+    force_send: bool = False
+):
+    """
+    Publica um aviso com card visual elegante no grupo principal (ex: https://t.me/partiturasecia)
+    sempre que uma nova partitura for postada em um canal onde o bot é administrador.
+    """
+    if not force_send and not cfg.get("acervo_channel_notify_enabled", True):
+        return None
+
+    target_chat = cfg.get("acervo_channel_notify_chat", "@partiturasecia")
+    if not target_chat:
+        target_chat = "@partiturasecia"
+
+    # Trata formato do target_chat (URL, @usuario ou ID numérico)
+    if isinstance(target_chat, str):
+        target_chat = target_chat.strip()
+        if "t.me/" in target_chat:
+            target_chat = target_chat.split("t.me/")[-1].strip().strip("/")
+            if not target_chat.startswith("@") and not target_chat.startswith("-"):
+                target_chat = f"@{target_chat}"
+        elif not target_chat.startswith("@") and not target_chat.startswith("-") and not target_chat.isdigit():
+            target_chat = f"@{target_chat}"
+        elif target_chat.lstrip("-").isdigit():
+            target_chat = int(target_chat)
+
+    if not title:
+        title = clean_file_title(file_name, caption)
+    badge_short, format_name, format_icon = get_file_format_info(file_name, file_type)
+    file_size_str = format_bytes(file_size) if file_size else ""
+
+    # Obtém o link do canal específico (tenta detectar/gerar se for admin e não tiver)
+    channel_link = get_channel_invite_link(cfg, channel_id, channel_username)
+    if not channel_link or channel_link == cfg.get("acervo_chatlist_url", ""):
+        try:
+            chat = await bot.get_chat(channel_id)
+            link = chat.invite_link or (f"https://t.me/{chat.username}" if chat.username else None)
+            if not link:
+                try:
+                    link = await bot.export_chat_invite_link(channel_id)
+                except Exception:
+                    try:
+                        il = await bot.create_chat_invite_link(channel_id, name="Acervo Partituras")
+                        link = il.invite_link
+                    except Exception:
+                        link = None
+            if link:
+                channel_link = link
+                if "channel_invite_links" not in cfg:
+                    cfg["channel_invite_links"] = {}
+                cfg["channel_invite_links"][str(channel_id)] = link
+                save_config(cfg)
+        except Exception as e_ch:
+            logger.debug(f"Não foi possível obter link direto do canal {channel_id}: {e_ch}")
+
+    if not channel_link:
+        channel_link = cfg.get("acervo_chatlist_url", "https://t.me/addlist/H5UNPP0h4FI3ZTNh")
+
+    # Link direto da postagem da partitura no canal
+    post_url = ""
+    if channel_username:
+        u = channel_username.lstrip("@")
+        post_url = f"https://t.me/{u}/{message_id}"
+    else:
+        cid_str = str(channel_id)
+        if cid_str.startswith("-100"):
+            cid_clean = cid_str[4:]
+        elif cid_str.startswith("-"):
+            cid_clean = cid_str[1:]
+        else:
+            cid_clean = cid_str
+        post_url = f"https://t.me/c/{cid_clean}/{message_id}"
+
+    # Informações do bot para o rodapé
+    try:
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username or "botpartituras_bot"
+    except Exception:
+        bot_username = "botpartituras_bot"
+
+    size_part = f" • 💾 <b>Tamanho:</b> <code>{file_size_str}</code>" if file_size_str else ""
+    file_display = f"📁 <b>Arquivo:</b> <code>{html.escape(file_name)}</code>\n" if file_name and file_name != title else ""
+
+    card_text = (
+        f"🎼 <b>NOVA PARTITURA NO ACERVO!</b>\n"
+        f"──────────────────────────────\n"
+        f"🎵 <b>Título:</b> <b>{html.escape(title.upper())}</b>\n"
+        f"{file_display}"
+        f"📄 <b>Tipo:</b> {format_icon} {format_name}{size_part}\n"
+        f"📢 <b>Canal:</b> {html.escape(channel_title)}\n"
+        f"──────────────────────────────\n"
+        f"🔒 <b>Acesso ao Canal Privado:</b>\n"
+        f"1️⃣ Toque em <b>'1º Entrar no Canal'</b> para se inscrever\n"
+        f"2️⃣ Toque em <b>'2º Baixar Partitura'</b> para abrir o arquivo\n\n"
+        f"🎵 <i>Enviado via @{bot_username}</i>"
+    )
+
+    buttons = []
+    if channel_link:
+        buttons.append([InlineKeyboardButton(f"📢 1º Entrar no Canal ({channel_title[:16]})", url=channel_link)])
+    if post_url:
+        buttons.append([InlineKeyboardButton("📥 2º Baixar Partitura", url=post_url)])
+    buttons.append([InlineKeyboardButton("🔍 Pesquisar no Acervo", switch_inline_query_current_chat="")])
+
+    markup = InlineKeyboardMarkup(buttons)
+
+    try:
+        sent_msg = await bot.send_message(
+            chat_id=target_chat,
+            text=card_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup,
+            disable_web_page_preview=True
+        )
+        logger.info(f"[Acervo Notificação] 📢 Notificado no grupo {target_chat}: '{title}' ({channel_title})")
+        return sent_msg
+    except Exception as e:
+        logger.warning(f"[Acervo Notificação] Não foi possível avisar no grupo {target_chat}: {e}")
+        return None
+
+
 def get_all_acervo_channels(cfg: dict) -> list:
     """Retorna lista unificada de todos os canais do acervo (banco + vinculados)."""
     db_channels = acervo_db.get_channels_summary()
@@ -1688,6 +1820,10 @@ def generate_acervo_dashboard_text_and_kb():
         hours = inline_autodel / 3600
         inline_autodel_label = f"{int(hours) if hours.is_integer() else hours}h ⏳"
 
+    notify_enabled = cfg.get("acervo_channel_notify_enabled", True)
+    notify_chat = cfg.get("acervo_channel_notify_chat", "@partiturasecia")
+    notify_badge = "🟢 Ativado" if notify_enabled else "🔴 Desativado"
+
     lines = [
         "🎼 ══════════════════════ 🎼",
         "   <b>ACERVO GLOBAL DE PARTITURAS</b>",
@@ -1696,6 +1832,7 @@ def generate_acervo_dashboard_text_and_kb():
         f"📄 <b>Documentos / PDFs:</b> <code>{docs_count}</code>",
         f"🎵 <b>Áudios / Playbacks:</b> <code>{aud_count}</code>",
         f"📢 <b>Canais no Acervo:</b> <code>{total_chans}</code> (de {len(linked_c)} vinculados)",
+        f"📢 <b>Avisar Novas Partituras no Grupo:</b> <code>{notify_badge}</code> (<code>{html.escape(str(notify_chat))}</code>)",
         f"🗑️ <b>Apagar Busca Inline no Grupo:</b> <code>{inline_autodel_label}</code>",
         f"🤖 <b>Auto-Resposta no Grupo:</b> <code>{auto_reply_badge}</code>\n"
     ]
@@ -1722,7 +1859,11 @@ def generate_acervo_dashboard_text_and_kb():
         "3. <b>Encaminhamento:</b> Encaminhe mensagens dos canais direto aqui no privado!"
     )
 
+    notify_enabled = cfg.get("acervo_channel_notify_enabled", True)
+    notify_badge = "🟢 Ativado" if notify_enabled else "🔴 Desativado"
+
     kb = [
+        [InlineKeyboardButton(f"📢 Avisos no Grupo: {notify_badge}", callback_data="acervo:toggle:group_notify")],
         [InlineKeyboardButton(f"🗑️ Apagar Busca Inline: {inline_autodel_label}", callback_data="acervo:inline_autodel_menu")],
         [InlineKeyboardButton("🔗 Links de Entrada dos Canais", callback_data="acervo:channel_links_menu")],
         [InlineKeyboardButton(f"🤖 Auto-Resposta: {auto_reply_badge}", callback_data="acervo:toggle:autoreply")],

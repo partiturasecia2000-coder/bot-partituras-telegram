@@ -264,6 +264,27 @@ def main():
             )
             if added:
                 logger.info(f"[Acervo] ⚡ Auto-indexada partitura do canal '{title}': {media_info.get('file_name')} (ID: {msg.message_id})")
+
+                # Notifica o grupo oficial se for postagem nova
+                if update.channel_post:
+                    try:
+                        from modules.inline_acervo import notify_new_acervo_item_in_group
+                        await notify_new_acervo_item_in_group(
+                            bot=context.bot,
+                            cfg=cfg,
+                            channel_id=chat.id,
+                            channel_title=title,
+                            channel_username=ch_user,
+                            message_id=msg.message_id,
+                            file_name=media_info.get("file_name", ""),
+                            title=media_info.get("title", ""),
+                            caption=media_info.get("caption", ""),
+                            file_type=media_info.get("file_type", "document"),
+                            file_size=media_info.get("file_size", 0),
+                        )
+                    except Exception as e_notify:
+                        logger.error(f"Erro ao avisar nova partitura no grupo oficial: {e_notify}")
+
                 if cfg.get("log_channel_id"):
                     try:
                         stats = acervo_db.get_stats()
@@ -793,6 +814,7 @@ def main():
     app.add_handler(CommandHandler(["backup", "exportar"], admin_cmd_handler.cmd_backup))
     app.add_handler(CommandHandler(["autodel", "autoapagar", "autodelete"], admin_cmd_handler.cmd_autodel))
     app.add_handler(CommandHandler(["setlink", "linkcanal", "linkconvite"], admin_cmd_handler.cmd_setlink))
+    app.add_handler(CommandHandler(["avisogrupo", "notificargrupo", "avisonovidades"], admin_cmd_handler.cmd_avisogrupo))
     app.add_handler(CommandHandler(["restaurar", "restore", "importar"], admin_cmd_handler.cmd_restaurar))
     app.add_handler(CommandHandler(["filtro", "filter"], auto_responder_handler.cmd_filtro))
     app.add_handler(CommandHandler(["filtros", "filters"], auto_responder_handler.cmd_filtros))
