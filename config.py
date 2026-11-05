@@ -179,6 +179,12 @@ DEFAULT_CONFIG = {
         "announce_end": True,
         "current_state": None,
         "enabled_chats": []
+    },
+    "youtube_notifications": {
+        "enabled": True,
+        "target_chat": "@partiturasecia",
+        "check_interval_minutes": 5,
+        "channels": []
     }
 }
 

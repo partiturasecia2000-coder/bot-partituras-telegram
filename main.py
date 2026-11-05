@@ -673,6 +673,12 @@ def main():
             except Exception as e_nm:
                 logger.error(f"Erro no ciclo de modo noturno: {e_nm}", exc_info=True)
 
+            try:
+                from modules.youtube_notifier import check_youtube_channels_cycle
+                await check_youtube_channels_cycle(application.bot)
+            except Exception as e_yt:
+                logger.error(f"Erro no ciclo do YouTube notifier: {e_yt}", exc_info=True)
+
             await asyncio.sleep(10)
 
     async def post_init(application):
@@ -840,6 +846,10 @@ def main():
     app.add_handler(CommandHandler(["permitirlink", "liberarlink", "whitelistlink"], admin_cmd_handler.cmd_permitirlink))
     app.add_handler(CommandHandler(["removerlink", "dellink"], admin_cmd_handler.cmd_removerlink))
     app.add_handler(CommandHandler(["linkspermitidos", "dominiospermitidos", "allowedlinks"], admin_cmd_handler.cmd_linkspermitidos))
+    app.add_handler(CommandHandler(["addyoutube", "adicionaryoutube"], admin_cmd_handler.cmd_addyoutube))
+    app.add_handler(CommandHandler(["removeryoutube", "excluiryoutube", "delyoutube"], admin_cmd_handler.cmd_removeryoutube))
+    app.add_handler(CommandHandler(["listayoutube", "canaisyoutube", "ytchannels"], admin_cmd_handler.cmd_listayoutube))
+    app.add_handler(CommandHandler(["testaryoutube", "testyoutube"], admin_cmd_handler.cmd_testaryoutube))
 
     async def cmd_whitelist_hub(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await admin_cache.is_admin(update.effective_chat, update.effective_user.id):
@@ -874,6 +884,13 @@ def main():
             interval=30,
             first=5,
             name="night_mode_transitions_checker"
+        )
+        from modules.youtube_notifier import check_youtube_channels_job
+        app.job_queue.run_repeating(
+            check_youtube_channels_job,
+            interval=300,
+            first=30,
+            name="youtube_checker"
         )
 
     print("✅ Bot configurado com sucesso! Conectando aos servidores do Telegram...")

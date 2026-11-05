@@ -3369,6 +3369,96 @@ class AdminCommandHandler:
         text, markup = generate_allowed_links_page(cfg)
         await safe_reply(update, text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
+    async def cmd_addyoutube(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Adiciona um canal do YouTube para monitoramento."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem gerenciar canais do YouTube.")
+            return
+        await self._clean_admin_trigger(update)
+        if not context.args:
+            await safe_reply(
+                update,
+                "💡 <b>Como Usar:</b>\n"
+                "• <code>/addyoutube @NomeDoCanal</code>\n"
+                "• <code>/addyoutube https://www.youtube.com/@NomeDoCanal</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        raw_input = " ".join(context.args).strip()
+        wait_msg = await safe_reply(update, "🔍 <i>Consultando dados do canal no YouTube, aguarde...</i>", parse_mode=ParseMode.HTML)
+        from modules.youtube_notifier import add_youtube_channel
+        cfg = load_config()
+        success, res_msg, ch_data = add_youtube_channel(cfg, raw_input)
+        try:
+            if wait_msg:
+                await wait_msg.delete()
+        except Exception:
+            pass
+
+        if success:
+            await safe_reply(
+                update,
+                f"✅ {res_msg}\n\n"
+                f"📺 Canal: <b>{ch_data.get('name')}</b>\n"
+                f"🔗 Link: {ch_data.get('url')}\n"
+                f"⏱️ O bot monitorará este canal a cada 5 minutos!",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await safe_reply(update, f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+
+    async def cmd_removeryoutube(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Remove um canal do YouTube do monitoramento."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem gerenciar canais do YouTube.")
+            return
+        await self._clean_admin_trigger(update)
+        if not context.args:
+            await safe_reply(
+                update,
+                "💡 <b>Como Usar:</b>\n"
+                "• <code>/removeryoutube 0</code> (número do canal na /listayoutube)\n"
+                "• <code>/removeryoutube @NomeDoCanal</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        identifier = " ".join(context.args).strip()
+        from modules.youtube_notifier import remove_youtube_channel
+        cfg = load_config()
+        success, res_msg = remove_youtube_channel(cfg, identifier)
+        if success:
+            await safe_reply(update, f"🗑️ {res_msg}", parse_mode=ParseMode.HTML)
+        else:
+            await safe_reply(update, f"ℹ️ {res_msg}", parse_mode=ParseMode.HTML)
+
+    async def cmd_listayoutube(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Lista todos os canais do YouTube monitorados."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem ver os canais monitorados.")
+            return
+        await self._clean_admin_trigger(update)
+        cfg = load_config()
+        from modules.panel import generate_sub_youtube
+        text, markup = generate_sub_youtube(cfg)
+        await safe_reply(update, text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+
+    async def cmd_testaryoutube(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Dispara imediatamente um card de teste do YouTube no grupo."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem testar o notificador.")
+            return
+        await self._clean_admin_trigger(update)
+        cfg = load_config()
+        from modules.youtube_notifier import send_youtube_test_card
+        target = cfg.get("youtube_notifications", {}).get("target_chat") or cfg.get("main_group_id") or "@partiturasecia"
+        ok, res_msg = await send_youtube_test_card(context.bot, target, cfg)
+        if ok:
+            await safe_reply(update, f"🚀 {res_msg}", parse_mode=ParseMode.HTML)
+        else:
+            await safe_reply(update, f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+
 
 
 

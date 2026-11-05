@@ -34,6 +34,12 @@ from modules.whitelist import (
     handle_whitelist_input
 )
 from modules.utils import AdminCache, make_disabled_button
+from modules.youtube_notifier import (
+    add_youtube_channel,
+    remove_youtube_channel,
+    send_youtube_test_card,
+    fetch_youtube_channel_videos
+)
 from modules.recurring import (
     format_interval,
     format_interval_display,
@@ -314,6 +320,11 @@ def generate_hub_messages(cfg: dict):
     sched_count = len([x for x in cfg.get("scheduled_transmissions", []) if x.get("status") == "pending"])
     rec_count = len(cfg.get("recurring_messages", []))
     resp_count = len(cfg.get("auto_responses", []))
+    yt_cfg = cfg.get("youtube_notifications", {})
+    yt_enabled = yt_cfg.get("enabled", True)
+    yt_channels = yt_cfg.get("channels", [])
+    yt_count = len(yt_channels)
+    yt_status = "🟢" if yt_enabled and yt_count > 0 else ("🟡" if yt_enabled else "🔴")
 
     lines = [
         "📢 ══════════════════════════ 📢",
@@ -323,6 +334,7 @@ def generate_hub_messages(cfg: dict):
         f"• 📢 *Transmissões Agendadas:* `{sched_count}` pendente(s)",
         f"• ⏱️ *Mensagens Recorrentes:* `{rec_count}` ativa(s)",
         f"• 🤖 *Auto-Respostas (Regex):* `{resp_count}` cadastrada(s)",
+        f"• 🎬 *Notificador YouTube:* {yt_status} `{yt_count}` canal(is) cadastrado(s)",
         "• 📜 *Regras Oficiais do Grupo*\n"
     ]
     text = "\n".join(lines)
@@ -337,7 +349,8 @@ def generate_hub_messages(cfg: dict):
             InlineKeyboardButton(f"🤖 Auto-Respostas ({resp_count})", callback_data="cfg:resp:list")
         ],
         [
-            InlineKeyboardButton("📜 Regras do Grupo ▾", callback_data="cfg:sub:rules")
+            InlineKeyboardButton("📜 Regras do Grupo ▾", callback_data="cfg:sub:rules"),
+            InlineKeyboardButton(f"🎬 YouTube ({yt_count}) ▾", callback_data="cfg:sub:youtube")
         ],
         [
             InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
@@ -1946,6 +1959,79 @@ def generate_sub_rules(cfg: dict):
     return text, InlineKeyboardMarkup(keyboard)
 
 
+def generate_sub_youtube(cfg: dict):
+    yt_cfg = cfg.get("youtube_notifications", {})
+    enabled = yt_cfg.get("enabled", True)
+    target_chat = yt_cfg.get("target_chat") or cfg.get("main_group_id") or "@partiturasecia"
+    channels = yt_cfg.get("channels", [])
+    interval = yt_cfg.get("check_interval_minutes", 5)
+
+    status_str = "🟢 Ativado" if enabled else "🔴 Desativado"
+    toggle_btn_text = "🎬 Notificador: 🟢 Ativado" if enabled else "🎬 Notificador: 🔴 Desativado"
+
+    lines = [
+        "🎬 ══════════════════════════ 🎬",
+        "   *NOTIFICADOR DO YOUTUBE*",
+        "🎬 ══════════════════════════ 🎬\n",
+        "Monitore canais do YouTube e receba novos vídeos automaticamente no grupo!\n",
+        f"• ⚙️ *Status Geral:* {status_str}",
+        f"• 🎯 *Destino das Postagens:* `{target_chat}`",
+        f"• ⏱️ *Intervalo de Varredura:* `A cada {interval} min`",
+        f"• 📺 *Canais Monitorados:* `{len(channels)}`\n"
+    ]
+
+    if channels:
+        lines.append("📋 *Canais Ativos no Monitoramento:*")
+        for i, ch in enumerate(channels, 1):
+            name = ch.get("name", "Canal")
+            handle_or_url = ch.get("input") or ch.get("url") or ""
+            lines.append(f"{i}. *{name}* (`{handle_or_url}`)")
+        lines.append("\n💡 Novos vídeos postados nestes canais serão anunciados automaticamente no grupo!")
+    else:
+        lines.append("⚠️ _Nenhum canal do YouTube cadastrado no momento._\nToque no botão abaixo para adicionar o primeiro canal!")
+
+    text = "\n".join(lines)
+
+    kb = [
+        [InlineKeyboardButton(toggle_btn_text, callback_data="cfg:toggle:youtube")],
+        [
+            InlineKeyboardButton("➕ Adicionar Canal", callback_data="cfg:youtube:add"),
+            InlineKeyboardButton(f"🗑️ Remover Canal ({len(channels)})", callback_data="cfg:youtube:del")
+        ],
+        [
+            InlineKeyboardButton("🎯 Alterar Grupo Destino", callback_data="cfg:youtube:target"),
+            InlineKeyboardButton("🚀 Testar Envio Imediato", callback_data="cfg:youtube:test")
+        ],
+        [InlineKeyboardButton("◀ Voltar a Mensagens", callback_data="cfg:hub:messages")]
+    ]
+    return text, InlineKeyboardMarkup(kb)
+
+
+def generate_sub_youtube_delete(cfg: dict):
+    yt_cfg = cfg.get("youtube_notifications", {})
+    channels = yt_cfg.get("channels", [])
+
+    lines = [
+        "🗑️ ══════════════════════════ 🗑️",
+        "   *REMOVER CANAL DO YOUTUBE*",
+        "🗑️ ══════════════════════════ 🗑️\n",
+        "Selecione o canal que você deseja remover do monitoramento:"
+    ]
+    text = "\n".join(lines)
+
+    kb = []
+    if not channels:
+        lines.append("\n_Nenhum canal para remover._")
+        text = "\n".join(lines)
+    else:
+        for i, ch in enumerate(channels):
+            name = ch.get("name", f"Canal #{i+1}")[:25]
+            kb.append([InlineKeyboardButton(f"❌ Remover: {name}", callback_data=f"cfg:youtube:rm:{i}")])
+
+    kb.append([InlineKeyboardButton("◀ Voltar ao Notificador", callback_data="cfg:sub:youtube")])
+    return text, InlineKeyboardMarkup(kb)
+
+
 # =====================================================================
 # CLASSE PRINCIPAL DO PAINEL INTERATIVO
 # =====================================================================
@@ -2643,6 +2729,60 @@ class InteractivePanelHandler:
 
         # Whitelist & Links Permitidos (modules/whitelist.py)
         if await handle_whitelist_input(self, update, context):
+            return True
+
+        if action == "youtube_add":
+            raw_input = msg.text.strip() if msg.text else ""
+            if not raw_input:
+                await msg.reply_text("❌ Por favor, envie um @handle ou link válido do canal do YouTube, ou digite /cancelar.")
+                return True
+
+            del self.pending_inputs[user.id]
+            wait_msg = await msg.reply_text("🔍 <i>Consultando dados do canal no YouTube, aguarde...</i>", parse_mode=ParseMode.HTML)
+
+            cfg = load_config()
+            success, res_text, ch_data = add_youtube_channel(cfg, raw_input)
+            try:
+                await wait_msg.delete()
+            except Exception:
+                pass
+
+            if success:
+                kb = [[InlineKeyboardButton("🎬 Voltar ao Notificador", callback_data="cfg:sub:youtube")]]
+                await msg.reply_text(
+                    f"✅ {res_text}\n\n"
+                    f"📺 Canal: <b>{ch_data.get('name')}</b>\n"
+                    f"🔗 Link: {ch_data.get('url')}\n"
+                    f"⏱️ Verificação: A cada 5 minutos\n\n"
+                    f"<i>O bot anunciará novos vídeos automaticamente no grupo!</i>",
+                    reply_markup=InlineKeyboardMarkup(kb),
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                kb = [[InlineKeyboardButton("➕ Tentar Novamente", callback_data="cfg:youtube:add")]]
+                await msg.reply_text(f"⚠️ {res_text}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
+            return True
+
+        if action == "youtube_target":
+            raw_input = msg.text.strip() if msg.text else ""
+            if not raw_input:
+                await msg.reply_text("❌ Por favor, envie o @username ou ID do grupo, ou digite /cancelar.")
+                return True
+
+            del self.pending_inputs[user.id]
+            cfg = load_config()
+            yt_cfg = cfg.setdefault("youtube_notifications", {
+                "enabled": True, "target_chat": "@partiturasecia", "check_interval_minutes": 5, "channels": []
+            })
+            yt_cfg["target_chat"] = raw_input
+            save_config(cfg)
+
+            kb = [[InlineKeyboardButton("🎬 Voltar ao Notificador", callback_data="cfg:sub:youtube")]]
+            await msg.reply_text(
+                f"✅ Grupo destino atualizado com sucesso para: <code>{raw_input}</code>!",
+                reply_markup=InlineKeyboardMarkup(kb),
+                parse_mode=ParseMode.HTML
+            )
             return True
 
         if action == "acervo:set_channel_link":
@@ -4227,6 +4367,80 @@ class InteractivePanelHandler:
             await query.answer()
             text, markup = generate_sub_rules(cfg)
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        # Submenu YouTube Notifier
+        if data == "cfg:sub:youtube":
+            await query.answer()
+            text, markup = generate_sub_youtube(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:toggle:youtube":
+            yt_cfg = cfg.setdefault("youtube_notifications", {
+                "enabled": True, "target_chat": "@partiturasecia", "check_interval_minutes": 5, "channels": []
+            })
+            yt_cfg["enabled"] = not yt_cfg.get("enabled", True)
+            save_config(cfg)
+            await query.answer("Status do Notificador do YouTube alterado!")
+            text, markup = generate_sub_youtube(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:youtube:add":
+            await query.answer()
+            self.pending_inputs[user.id] = {"action": "youtube_add"}
+            prompt = (
+                "🎬 <b>Adicionar Canal do YouTube</b>\n\n"
+                "Envie o <b>@handle</b> ou o <b>link do canal</b> que você deseja monitorar.\n\n"
+                "<i>Exemplos aceitos:</i>\n"
+                "• <code>@NomeDoCanal</code>\n"
+                "• <code>https://www.youtube.com/@NomeDoCanal</code>\n"
+                "• <code>https://www.youtube.com/channel/UC...</code>\n\n"
+                "Envie agora ou digite /cancelar:"
+            )
+            await query.message.reply_text(prompt, parse_mode=ParseMode.HTML)
+            return
+
+        if data == "cfg:youtube:del":
+            await query.answer()
+            text, markup = generate_sub_youtube_delete(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data.startswith("cfg:youtube:rm:"):
+            await query.answer()
+            idx_str = data.split(":")[-1]
+            success, msg = remove_youtube_channel(cfg, idx_str)
+            cfg = load_config()
+            text, markup = generate_sub_youtube_delete(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        if data == "cfg:youtube:target":
+            await query.answer()
+            self.pending_inputs[user.id] = {"action": "youtube_target"}
+            cur_target = cfg.get("youtube_notifications", {}).get("target_chat", "@partiturasecia")
+            prompt = (
+                "🎯 <b>Definir Grupo Destino do YouTube</b>\n\n"
+                f"Destino atual configurado: <code>{cur_target}</code>\n\n"
+                "Envie o @username do grupo (ex: <code>@partiturasecia</code>) ou o ID numérico do chat (ex: <code>-100...</code>).\n\n"
+                "Envie agora ou digite /cancelar:"
+            )
+            await query.message.reply_text(prompt, parse_mode=ParseMode.HTML)
+            return
+
+        if data == "cfg:youtube:test":
+            await query.answer("Enviando card de teste...")
+            target = cfg.get("youtube_notifications", {}).get("target_chat") or cfg.get("main_group_id") or "@partiturasecia"
+            ok, res_msg = await send_youtube_test_card(context.bot, target, cfg)
+            if ok:
+                await query.message.reply_text(f"🚀 {res_msg}", parse_mode=ParseMode.HTML)
+            else:
+                await query.message.reply_text(f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
             return
 
         if data == "cfg:sub:cmd_clean":
