@@ -5,6 +5,7 @@ import os
 import sqlite3
 import time
 import zipfile
+from uuid import uuid4
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any
 
@@ -18,6 +19,25 @@ logger = logging.getLogger(__name__)
 # Canal padrão configurado pelo usuário para backups e relatórios
 DEFAULT_BACKUP_CHANNEL = -1004462851433
 DB_PATH = BASE_DIR / "acervo_partituras.db"
+
+
+def _add_database_snapshot(archive, path, name):
+    """A API de backup SQLite entrega um arquivo consistente mesmo em uso."""
+    snapshot = path.with_name(f'.backup-{uuid4().hex}.db')
+    source = destination = None
+    try:
+        source = sqlite3.connect(path, timeout=10)
+        destination = sqlite3.connect(snapshot)
+        source.backup(destination)
+        destination.close()
+        destination = None
+        archive.write(snapshot, arcname=name)
+    finally:
+        if destination is not None:
+            destination.close()
+        if source is not None:
+            source.close()
+        snapshot.unlink(missing_ok=True)
 
 
 def create_backup_zip() -> Tuple[str, io.BytesIO, int, int]:
@@ -42,7 +62,10 @@ def create_backup_zip() -> Tuple[str, io.BytesIO, int, int]:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         if DB_PATH.exists():
-            zf.write(DB_PATH, arcname="acervo_partituras.db")
+            _add_database_snapshot(zf, DB_PATH, "acervo_partituras.db")
+        deletion_db = BASE_DIR / "agendamentos.db"
+        if deletion_db.exists():
+            _add_database_snapshot(zf, deletion_db, "agendamentos.db")
         if CONFIG_PATH.exists():
             zf.write(CONFIG_PATH, arcname="config.json")
 
@@ -118,7 +141,7 @@ async def send_daily_backup(bot, target_channel: Optional[int | str] = None, is_
         )
 
         b_cfg["last_daily_backup_timestamp"] = time.time()
-        save_config(cfg)
+        _save_backup_progress("last_daily_backup_timestamp", b_cfg["last_daily_backup_timestamp"])
         logger.info(f"[Backup] Backup diário enviado com sucesso para o canal {dest_channel} ({filename})")
         return True, f"Backup enviado com sucesso para o canal <code>{dest_channel}</code>!"
 
@@ -302,7 +325,7 @@ async def send_weekly_report(bot, target_channel: Optional[int | str] = None, is
         )
 
         b_cfg["last_weekly_report_timestamp"] = time.time()
-        save_config(cfg)
+        _save_backup_progress("last_weekly_report_timestamp", b_cfg["last_weekly_report_timestamp"])
         logger.info(f"[Relatório] Relatório semanal enviado com sucesso para o canal {dest_channel}")
         return True, f"Relatório semanal enviado com sucesso para o canal <code>{dest_channel}</code>!"
 
@@ -334,7 +357,7 @@ async def check_backup_and_report_cycle(bot) -> None:
         if last_bkp == 0:
             # Envia o primeiro backup de inicialização após 60s
             b_cfg["last_daily_backup_timestamp"] = now - 86340  # faltam 60 segundos
-            save_config(cfg)
+            _save_backup_progress("last_daily_backup_timestamp", b_cfg["last_daily_backup_timestamp"])
         elif now - last_bkp >= (b_cfg.get("daily_backup_interval_hours", 24) * 3600):
             logger.info("[Backup] Ciclo de 24h atingido! Iniciando envio do backup automático...")
             await send_daily_backup(bot, channel_id, is_manual=False)
@@ -345,7 +368,7 @@ async def check_backup_and_report_cycle(bot) -> None:
         # Se for primeira vez (last_rep == 0), aguarda 120s antes de enviar
         if last_rep == 0:
             b_cfg["last_weekly_report_timestamp"] = now - 604680  # faltam 120 segundos
-            save_config(cfg)
+            _save_backup_progress("last_weekly_report_timestamp", b_cfg["last_weekly_report_timestamp"])
         elif now - last_rep >= (b_cfg.get("weekly_report_interval_days", 7) * 86400):
             logger.info("[Relatório] Ciclo de 7 dias atingido! Enviando relatório semanal...")
             await send_weekly_report(bot, channel_id, is_manual=False)
@@ -396,3 +419,10 @@ def generate_sub_backup(cfg: dict) -> Tuple[str, InlineKeyboardMarkup]:
     ]
 
     return "\n".join(lines), InlineKeyboardMarkup(kb)
+
+
+def _save_backup_progress(key, value):
+    latest = load_config()
+    latest.setdefault("backup_system", {})[key] = value
+    if not save_config(latest):
+        raise RuntimeError("Não foi possível salvar o progresso do backup.")

@@ -368,7 +368,15 @@ async def _delete_job_callback(context: ContextTypes.DEFAULT_TYPE):
 
 def schedule_message_deletion(context_or_jq, chat_id: int, message_id: int, delay_seconds: int, bot=None):
     """Agenda a exclusão de uma mensagem após X segundos usando o JobQueue ou fallback com asyncio."""
-    if delay_seconds <= 0 or not context_or_jq:
+    if delay_seconds <= 0:
+        return
+    from modules.scheduler import active_scheduler
+    scheduler = active_scheduler()
+    if scheduler and scheduler.started:
+        # Nenhuma task em memória: o prazo fica no banco para sobreviver ao reinício.
+        scheduler.deletions.schedule(chat_id, message_id, delay_seconds)
+        return
+    if not context_or_jq:
         return
 
     jq = getattr(context_or_jq, "job_queue", context_or_jq)

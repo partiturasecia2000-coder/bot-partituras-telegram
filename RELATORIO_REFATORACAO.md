@@ -1,36 +1,35 @@
-# Melhorias do bot Telegram — versão 2
+# Agendamentos — versão 3
 
-Fonte: `D:\Movidos\Desktop\Projeto Telegram\bot_discloud_refatorado.zip` (44 arquivos). O ZIP original permaneceu intacto; o trabalho foi feito em uma cópia.
+Fonte: `bot_discloud_melhorado_v2.zip`, na pasta do projeto indicada pelo usuário. O ZIP anterior foi preservado. Nenhum deploy ou envio real foi realizado.
 
-## Alterações entregues
+## Problemas encontrados e alterações
 
-- O método de callbacks, antes com mais de 2.200 linhas, virou um despachante curto. As 161 ações foram extraídas para funções agrupadas em navegação, moderação, recorrência, transmissão, respostas, chats, YouTube e backup.
-- Os 27 fluxos de entrada foram divididos em configurações, recorrência, respostas, transmissão e integrações. A ordem das condições foi mantida, com uma correção intencional: a edição de tempo personalizado das boas-vindas agora alcança sua rotina específica.
-- Foram centralizadas as dependências repetidas dos comportamentos do painel. As interfaces de importação e o ponto de entrada continuam disponíveis.
-- A configuração agora usa cópia profunda dos padrões, evitando que uma carga altere os padrões globais por referência. Foi corrigida a reinicialização indevida do indicador de migração antes de salvar.
-- JSON é gravado em arquivo temporário, sincronizado e substituído atomicamente. Uma falha antes da substituição mantém o arquivo anterior. O backup também usa essa escrita. O JSON principal inválido pode ser recuperado pelo backup; ambos inválidos geram erro e permanecem preservados.
-- As transações SQLite agora encerram as conexões em sucesso e em falha, além de confirmar ou reverter as operações.
-- Foi corrigido o acesso administrativo irrestrito no privado. O bot verifica administração em chats vinculados, ou usa `BOT_ADMIN_IDS`/`panel_admin_ids` quando configurados. Entradas pendentes revalidam permissão, e comandos administrativos do acervo passaram a exigir autorização. Busca inline pública preservada.
-- Corrigido um import ausente de `html` no fluxo que salva links de entrada de canais.
-- Dependências diretas e transitivas foram fixadas nas versões utilizadas nos testes. O arquivo aberto recebido foi preservado em `requirements.in`.
-- Incluídos 19 testes automatizados e o guia `ATUALIZACAO.md`.
+- Recorrência, modo noturno e YouTube tinham dois acionadores periódicos: um loop contínuo e jobs do APScheduler. Os acionadores duplicados foram removidos.
+- `modules/scheduler.py` agora controla seis ciclos: recorrência, transmissões, modo noturno, YouTube, backup/relatórios e exclusões. Cada ciclo executa em sequência consigo mesmo; uma rotina lenta ou com erro não impede o avanço das demais. O serviço inicia no `post_init` e cancela/aguarda suas tarefas no `post_stop`.
+- Os cinco primeiros ciclos verificam condições a cada 10 segundos, após 3 segundos iniciais; o intervalo configurado do YouTube continua sendo respeitado pela rotina existente. Exclusões são consultadas a cada segundo. A duração das operações e a rede podem acrescentar atraso.
+- Transmissões são reservadas como `sending` no JSON antes de iniciar a task. Disparo manual e automático usam a mesma reserva e o mesmo controle de tarefas, evitando duas execuções simultâneas do mesmo ID no processo. Se a gravação falhar, o envio não é iniciado.
+- Ao reiniciar, transmissões deixadas em `sending` viram `interrupted`; falhas inesperadas viram `failed`. Elas aparecem em `/agendados` com aviso para conferir os destinos antes de reenviar. Não são retomadas automaticamente, pois parte da mensagem pode já ter sido entregue. Envios em andamento ficam visíveis e não oferecem cancelamento que não seria efetivamente aplicado.
+- Agendamentos pendentes vencidos continuam sendo processados ao iniciar. Recorrências com horário fixo diário passam a recuperar o horário do dia atual após atraso/reinício, respeitando filtros de datas/dias e o registro do último horário executado. Não há reposição dos dias anteriores.
+- Exclusões que passam por `schedule_message_deletion` ficam em `agendamentos.db`. Esse novo banco é criado automaticamente e não contém tokens. Reinícios retomam as exclusões pendentes, inclusive vencidas. Falhas transitórias têm até cinco tentativas; mensagens já apagadas são consideradas concluídas. Falta de permissão ou restrição permanente fica registrada como falha.
+- Os backups automáticos incluem o novo banco. Ambos os bancos SQLite são copiados usando a API de backup do SQLite, evitando cópias brutas de arquivos em uso.
+- O progresso de recorrência, YouTube e backup é mesclado com uma carga atual do JSON, reduzindo o risco de substituir configurações ou transmissões criadas enquanto uma rotina aguardava a rede.
+- `/tarefas`, exclusivo para administradores, mostra o estado dos ciclos, transmissões ativas e quantidade de exclusões pendentes/com falha.
 
-## Evidências de validação
+## Validação
 
-- Compilação de todos os arquivos Python: aprovada.
-- 19 testes automatizados: aprovados em Python 3.14.3 com python-telegram-bot 22.8 e APScheduler 3.11.3.
-- Testes cobrem falha de substituição do JSON, preservação dos arquivos, recuperação de backup, recusa de dados ilegíveis, isolamento dos padrões, fechamento de SQLite e rollback, permissões, cancelamento, edição do tempo de boas-vindas e alteração de moderação.
-- Inicialização offline registrou os comandos/handlers e os três jobs periódicos, sem polling nem chamadas reais ao Telegram.
-- Checagem anterior de menus, persistência, SQLite e durações: aprovada.
-- Comparação com a versão recebida: 52 funções de menus/seletores produziram saídas equivalentes com dados e relógio controlados.
-- Comparação estrutural confirmou que os corpos das 188 rotas extraídas foram mantidos. A correção da precedência do tempo de boas-vindas fica na tabela de rotas.
-- Valores de `DEFAULT_CONFIG`, configuração de exemplo, `discloud.config`, `Procfile` e mídias foram preservados. Nenhuma credencial foi removida ou divulgada.
-- Pacote final verificado quanto à integridade, sintaxe e presença dos arquivos de origem. Arquivos temporários, dependências locais e bancos de teste não entram no ZIP.
+- 38 testes automatizados aprovados, incluindo os 19 testes anteriores e 19 novos testes do agendador.
+- Cobertura nova: inicialização idempotente, integração dos hooks da aplicação, encerramento e cancelamento das tasks, isolamento entre ciclos, retomada de exclusões após reabrir o banco, prazos futuros, tentativas limitadas, mensagens já apagadas, ausência de job duplicado, reserva única de transmissão, falha de gravação, falha de envio, recuperação do estado após reinício, recorrência diária atrasada e preservação de edições recentes.
+- Backup testado com fila persistente recuperável e sem arquivos temporários residuais.
+- Checagem anterior de 52 funções de menus, importações, persistência, SQLite e durações aprovada. A tela de transmissões mudou intencionalmente para exibir estados de envio e interrupção.
+- Compilação e integridade do ZIP verificadas.
+- Testes locais em Windows, Python 3.14.3, usando as mesmas dependências fixadas da versão 2; chamadas externas simuladas. Não houve validação conectada ao Telegram, YouTube ou Discloud.
 
-## Deploy e limites
+## Preservação e limites
 
-O deploy continua usando `MAIN=main.py`, `TYPE=bot`, RAM e reinício automático originais. Atualize todos os arquivos de código e preserve os dados reais do Discloud: `.env`, `config.json`, `.config_backup.json` e banco SQLite não vieram no ZIP recebido.
+`discloud.config`, `Procfile`, `config.py`, configuração de exemplo, dependências e mídias permanecem como na versão 2. O ponto de entrada continua sendo `main.py`. Nenhum token foi removido ou divulgado.
 
-O controle de acesso no privado mudou intencionalmente. Antes da atualização, confira se seu usuário é administrador de um chat vinculado acessível ao bot; ou configure uma lista explícita com seu ID numérico. O guia explica os dois caminhos. A política de grupos continua baseada na administração do grupo atual.
+Mantenha os dados existentes da hospedagem: `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db` e, após o primeiro uso desta versão, `agendamentos.db`. O pacote não inclui bancos ou configurações de produção.
 
-Não houve deploy nem teste conectado ao Telegram, ao YouTube ou ao Discloud. Os testes não cobrem todas as combinações de conversas, respostas externas e entrega de agendamentos. A validação foi local/offline em Windows; o comportamento real da hospedagem precisa de conferência após a atualização. A gravação atômica e o bloqueio local não evitam conflitos entre múltiplas instâncias ou entre operações independentes de leitura e gravação. A verificação de acesso entregue não é uma auditoria completa de segurança de todos os módulos.
+Exclusões agendadas pela versão anterior apenas em memória não podem ser recuperadas retroativamente. Timers específicos de captcha, respostas atrasadas e ações avulsas que não passam pelo helper de exclusão não foram migrados para persistência nesta etapa. O JobQueue permanece disponível para esses usos pontuais.
+
+Não há garantia de entrega exatamente uma vez: uma queda entre a aceitação de uma mensagem pelo Telegram e sua confirmação local continua sendo uma situação ambígua. Por isso, envios interrompidos exigem revisão manual e podem repetir mensagens se reenviados. A aplicação deve continuar usando uma única instância por token/conjunto de dados; o controle desta versão não é um coordenador distribuído.

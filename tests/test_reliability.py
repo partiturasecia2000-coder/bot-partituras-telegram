@@ -241,9 +241,9 @@ class StartupTests(unittest.TestCase):
         app = captured[0]
         self.assertIsNotNone(app.job_queue)
         jobs = {job.name for job in app.job_queue.jobs()}
-        self.assertIn('youtube_checker', jobs)
-        self.assertIn('night_mode_transitions_checker', jobs)
-        self.assertEqual(jobs, {'youtube_checker', 'night_mode_transitions_checker', 'recurring_messages_checker'})
+        self.assertEqual(jobs, set())  # ciclos periódicos pertencem ao agendador central
+        self.assertIsNotNone(app.post_init)
+        self.assertIsNotNone(app.post_stop)
         self.assertGreater(sum(len(group) for group in app.handlers.values()), 20)
 
 

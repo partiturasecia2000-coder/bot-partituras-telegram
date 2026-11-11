@@ -327,7 +327,14 @@ async def check_youtube_channels_cycle(bot) -> None:
             logger.error(f"[YouTube Notifier] Erro ao checar canal {ch.get('name')}: {e_ch}")
 
     if config_modified:
-        save_config(cfg)
+        latest = load_config()
+        progress = {(ch.get("url") or ch.get("input")): ch.get("last_video_id") for ch in channels}
+        for ch in latest.get("youtube_notifications", {}).get("channels", []):
+            key = ch.get("url") or ch.get("input")
+            if key in progress and progress[key]:
+                ch["last_video_id"] = progress[key]
+        if not save_config(latest):
+            raise RuntimeError("Não foi possível salvar o progresso do YouTube.")
 
 
 async def check_youtube_channels_job(context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -223,6 +223,19 @@ async def send_single_recurring_message(bot, msg_data: dict, chat_id: int, job_q
     return sent_msg.message_id if sent_msg else None
 
 
+
+def _save_recurring_progress(messages):
+    current = load_config()
+    progress = {m.get("id"): m for m in messages}
+    for message in current.get("recurring_messages", []):
+        previous = progress.get(message.get("id"))
+        if previous:
+            for key in ("last_message_id", "last_sent_timestamp", "last_fired_slot", "messages_counter_last"):
+                if key in previous:
+                    message[key] = previous[key]
+    if not save_config(current):
+        raise RuntimeError("Não foi possível salvar o progresso das mensagens recorrentes.")
+
 async def check_message_count_triggers(bot, chat_id: int, job_queue=None):
     """Incrementa o contador de mensagens do grupo e dispara mensagens repetidas baseadas em quantidade de mensagens."""
     GROUP_MESSAGE_COUNTS[chat_id] = GROUP_MESSAGE_COUNTS.get(chat_id, 0) + 1
@@ -282,7 +295,7 @@ async def check_message_count_triggers(bot, chat_id: int, job_queue=None):
                 logger.error(f"Erro ao disparar mensagem por contagem #{m.get('id')}: {e}")
 
     if updated:
-        save_config(cfg)
+        _save_recurring_progress(messages)
 
 
 async def process_recurring_messages_job(context_or_bot, job_queue=None):
@@ -389,8 +402,8 @@ async def process_recurring_messages_job(context_or_bot, job_queue=None):
             # Horário de início fixado (ex: 20:55)
             slot_key = f"{today_str}_{start_h:02d}:{start_m:02d}"
             if interval_minutes >= 1440:
-                # Intervalo diário (24h) ou maior: dispara quando bater a hora e minuto exatos!
-                if now_dt.hour == start_h and now_dt.minute == start_m:
+                # Recupera o horário do dia atual após atraso/reinício, sem repor dias anteriores.
+                if (now_dt.hour, now_dt.minute) >= (start_h, start_m):
                     if m.get("last_fired_slot") != slot_key:
                         should_fire = True
             else:
@@ -439,31 +452,16 @@ async def process_recurring_messages_job(context_or_bot, job_queue=None):
                 updated = True
 
     if updated:
-        save_config(cfg)
+        _save_recurring_progress(messages)
 
 
 async def process_scheduled_transmissions_job(bot):
-    """Verifica e dispara transmissões programadas pelo assistente (/comunicado) que atingiram o horário."""
-    cfg = load_config()
-    sched_list = cfg.get("scheduled_transmissions", [])
-    if not sched_list:
-        return
+    """O agendador reserva e acompanha cada envio antes de iniciá-lo."""
+    from modules.scheduler import start_scheduled_transmission
+    for item in load_config().get("scheduled_transmissions", []):
+        if item.get("status") == "pending":
+            start_scheduled_transmission(item.get("id"))
 
-    now_ts = time.time()
-    updated = False
-
-    for item in sched_list:
-        if item.get("status") != "pending":
-            continue
-
-        target_ts = item.get("schedule_timestamp", 0)
-        if now_ts >= target_ts:
-            item["status"] = "sending"
-            updated = True
-            asyncio.create_task(_execute_scheduled_transmission(bot, item))
-
-    if updated:
-        save_config(cfg)
 
 
 async def _execute_scheduled_transmission(bot, item: dict):
@@ -550,7 +548,8 @@ async def _execute_scheduled_transmission(bot, item: dict):
             entry["sent_count"] = sent_count
             entry["fail_count"] = fail_count
             break
-    save_config(cfg)
+    if not save_config(cfg):
+        raise RuntimeError("Falha ao registrar conclusão da transmissão.")
 
     # Notifica o criador (Admin)
     media_label = "🎥 Vídeo" if media_type == "video" else ("🖼️ Foto" if media_type == "photo" else "⚪ Texto")

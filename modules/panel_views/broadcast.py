@@ -402,7 +402,7 @@ def generate_wizard_schedule_menu(cfg: dict, state: dict):
 
 def generate_scheduled_transmissions_menu(cfg: dict):
     """Gera o menu com a lista de transmissões agendadas pendentes."""
-    sched_list = [x for x in cfg.get("scheduled_transmissions", []) if x.get("status") == "pending"]
+    sched_list = [x for x in cfg.get("scheduled_transmissions", []) if x.get("status") in ("pending", "sending", "interrupted", "failed")]
     sched_list.sort(key=lambda x: x.get("schedule_timestamp", 0))
 
     if not sched_list:
@@ -443,6 +443,11 @@ def generate_scheduled_transmissions_menu(cfg: dict):
         if len(item.get("text", "")) > 45:
             preview_text += "..."
 
+        status = item.get("status")
+        if status in ("interrupted", "failed"):
+            text += "⚠️ *Envio interrompido ou com erro.* Confira os destinos antes de reenviar: mensagens podem se repetir.\n"
+        elif status == "sending":
+            text += "🚀 *Transmissão em envio.*\n"
         text += (
             f"*{idx}️⃣ Destino:* `{dest_label}`\n"
             f"• ⏰ *Horário:* `{time_str}`\n"
@@ -451,8 +456,11 @@ def generate_scheduled_transmissions_menu(cfg: dict):
             f"• 📝 _{preview_text}_\n\n"
         )
         item_id = item.get("id")
+        if status == "sending":
+            continue
+        action_label = "Reenviar" if status in ("interrupted", "failed") else "Disparar Agora"
         keyboard.append([
-            InlineKeyboardButton(f"🚀 Disparar Agora #{idx}", callback_data=f"cfg:sched:fire:{item_id}"),
+            InlineKeyboardButton(f"🚀 {action_label} #{idx}", callback_data=f"cfg:sched:fire:{item_id}"),
             InlineKeyboardButton(f"🗑️ Cancelar #{idx}", callback_data=f"cfg:sched:cancel:{item_id}")
         ])
 

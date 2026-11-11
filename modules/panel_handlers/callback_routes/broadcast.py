@@ -326,9 +326,13 @@ async def on_cfg_sched_cancel(self, update, context, cfg, title):
     chat = update.effective_chat
     user = update.effective_user
     data = query.data
+    cfg = load_config()
     item_id = int(data.split(":")[-1])
     sched_list = cfg.get("scheduled_transmissions", [])
     item = next((x for x in sched_list if x.get("id") == item_id), None)
+    if item and item.get("status") == "sending":
+        await query.answer("⚠️ Esta transmissão já está em envio.", show_alert=True)
+        return
     if item:
         item["status"] = "cancelled"
         save_config(cfg)
@@ -351,14 +355,12 @@ async def on_cfg_sched_fire(self, update, context, cfg, title):
     item_id = int(data.split(":")[-1])
     sched_list = cfg.get("scheduled_transmissions", [])
     item = next((x for x in sched_list if x.get("id") == item_id), None)
-    if item and item.get("status") == "pending":
-        item["status"] = "sending"
-        save_config(cfg)
-        from modules.recurring import _execute_scheduled_transmission
-        asyncio.create_task(_execute_scheduled_transmission(context.bot, item))
-        await query.answer("🚀 Transmissão disparada imediatamente!", show_alert=True)
+    from modules.scheduler import start_scheduled_transmission
+    if start_scheduled_transmission(item_id, force=True):
+        await query.answer("🚀 Transmissão iniciada!", show_alert=True)
     else:
-        await query.answer("⚠️ Transmissão já executada ou cancelada.", show_alert=True)
+        await query.answer("⚠️ Não foi possível iniciar; atualize a lista e confira o estado.", show_alert=True)
+    cfg = load_config()
     text, markup = generate_scheduled_transmissions_menu(cfg)
     try:
         await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)

@@ -623,47 +623,16 @@ def main():
         if chat and chat.type in ("group", "supergroup"):
             await check_message_count_triggers(context.bot, chat.id, job_queue=context.job_queue)
 
-    BACKGROUND_TASKS = set()
-
-    async def background_scheduler(application):
-        """Loop autônomo e resiliente de segundo plano (independente de JobQueue/APScheduler)."""
-        logger.info("Agendador autônomo de segundo plano (Loop Contínuo) iniciado!")
-        print("🚀 [SISTEMA] Agendador autônomo de segundo plano (Loop Contínuo) iniciado!")
-        await asyncio.sleep(3)
-        while True:
-            try:
-                await process_recurring_messages_job(application.bot, job_queue=application.job_queue)
-            except Exception as e_rec:
-                logger.error(f"Erro no ciclo de mensagens recorrentes: {e_rec}", exc_info=True)
-
-            try:
-                await process_scheduled_transmissions_job(application.bot)
-            except Exception as e_sched:
-                logger.error(f"Erro no ciclo de transmissões agendadas: {e_sched}", exc_info=True)
-
-            try:
-                await check_night_mode_transitions_job(application.bot)
-            except Exception as e_nm:
-                logger.error(f"Erro no ciclo de modo noturno: {e_nm}", exc_info=True)
-
-            try:
-                from modules.youtube_notifier import check_youtube_channels_cycle
-                await check_youtube_channels_cycle(application.bot)
-            except Exception as e_yt:
-                logger.error(f"Erro no ciclo do YouTube notifier: {e_yt}", exc_info=True)
-
-            try:
-                from modules.backup_manager import check_backup_and_report_cycle
-                await check_backup_and_report_cycle(application.bot)
-            except Exception as e_bkp:
-                logger.error(f"Erro no ciclo de backup e relatórios: {e_bkp}", exc_info=True)
-
-            await asyncio.sleep(10)
+    async def post_stop(application):
+        scheduler = application.bot_data.get("task_scheduler")
+        if scheduler:
+            await scheduler.stop()
 
     async def post_init(application):
-        task = asyncio.create_task(background_scheduler(application))
-        BACKGROUND_TASKS.add(task)
-        application.bot_data["_bg_scheduler_task"] = task
+        from modules.scheduler import TaskScheduler
+        scheduler = TaskScheduler(application)
+        application.bot_data["task_scheduler"] = scheduler
+        await scheduler.start()
 
         # Auto-limpeza silenciosa de mensagens de texto espúrias do acervo na inicialização
         async def run_startup_purge():
@@ -699,7 +668,7 @@ def main():
             logger.debug(f"Não foi possível configurar bot commands: {e_cmd}")
 
     # Constrói o Application do python-telegram-bot
-    app = ApplicationBuilder().token(token).post_init(post_init).build()
+    app = ApplicationBuilder().token(token).post_init(post_init).post_stop(post_stop).build()
 
     # Registra erro
     app.add_error_handler(error_handler)
@@ -850,6 +819,32 @@ def main():
 
     app.add_handler(CommandHandler(["whitelist", "listabranca"], cmd_whitelist_hub))
 
+    async def cmd_tarefas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await panel_handler._require_admin(update):
+            await update.effective_message.reply_text("⛔ Apenas administradores.")
+            return
+        scheduler = context.application.bot_data.get("task_scheduler")
+        if not scheduler or not scheduler.started:
+            await update.effective_message.reply_text("Controle de tarefas ainda não iniciado.")
+            return
+        lines = ["📋 Rotinas automáticas"]
+        for name in scheduler.workers:
+            state = scheduler.health.get(name, {})
+            label = "aguardando primeiro ciclo"
+            if state.get("error"):
+                label = "falhou; tentará novamente"
+            elif state.get("running"):
+                label = "em execução"
+            elif state.get("last_success"):
+                label = "último ciclo concluído"
+            lines.append(f"• {name}: {label}")
+        counts = scheduler.deletions.counts()
+        lines.append(f"Exclusões pendentes: {counts.get('pending', 0)}; com falha: {counts.get('failed', 0)}")
+        lines.append(f"Transmissões em execução: {len(scheduler.transmissions)}")
+        await update.effective_message.reply_text("\n".join(lines))
+
+    app.add_handler(CommandHandler("tarefas", cmd_tarefas))
+
     # 3. Monitoramento de Mensagens Normais (Antispam, Anti-Repetição, Locks, Modo Noturno e Auto-Respostas)
     # Exclui comandos (/comando) e atualizações de status do pipeline de mensagens comuns
     message_filter = (
@@ -859,27 +854,8 @@ def main():
     )
     app.add_handler(MessageHandler(message_filter, filter_message_pipeline))
 
-    # 4. Agendamento em segundo plano de Mensagens Programadas e Modo Noturno
-    if app.job_queue:
-        app.job_queue.run_repeating(
-            process_recurring_messages_job,
-            interval=30,
-            first=10,
-            name="recurring_messages_checker"
-        )
-        app.job_queue.run_repeating(
-            check_night_mode_transitions_job,
-            interval=30,
-            first=5,
-            name="night_mode_transitions_checker"
-        )
-        from modules.youtube_notifier import check_youtube_channels_job
-        app.job_queue.run_repeating(
-            check_youtube_channels_job,
-            interval=300,
-            first=30,
-            name="youtube_checker"
-        )
+    # Ciclos periódicos pertencem exclusivamente a TaskScheduler (post_init).
+    # JobQueue continua disponível para ações pontuais, como timeout de captcha.
 
     print("✅ Bot configurado com sucesso! Conectando aos servidores do Telegram...")
     print("Pressione Ctrl + C no terminal para parar o bot quando desejar.")
