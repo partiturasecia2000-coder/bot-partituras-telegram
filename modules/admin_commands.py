@@ -3459,6 +3459,85 @@ class AdminCommandHandler:
         else:
             await safe_reply(update, f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
 
+    async def cmd_fazerbackup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Gera e envia o backup completo em arquivo ZIP imediatamente."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem gerar backups do sistema.")
+            return
+        await self._clean_admin_trigger(update)
+        wait_msg = await safe_reply(update, "💾 <i>Compactando banco de partituras e configurações em ZIP, aguarde...</i>", parse_mode=ParseMode.HTML)
+        from modules.backup_manager import send_daily_backup
+        cfg = load_config()
+        b_channel = cfg.get("backup_system", {}).get("channel_id", -1004462851433)
+        ok, res_msg = await send_daily_backup(context.bot, b_channel, is_manual=True)
+        try:
+            if wait_msg:
+                await wait_msg.delete()
+        except Exception:
+            pass
+        if ok:
+            await safe_reply(update, f"✅ <b>Backup Concluído!</b>\n{res_msg}", parse_mode=ParseMode.HTML)
+        else:
+            await safe_reply(update, f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+
+    async def cmd_relatoriosemanal(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Gera e envia o relatório semanal do sistema imediatamente."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem solicitar o relatório do sistema.")
+            return
+        await self._clean_admin_trigger(update)
+        wait_msg = await safe_reply(update, "📊 <i>Compilando métricas do acervo e comunidade, aguarde...</i>", parse_mode=ParseMode.HTML)
+        from modules.backup_manager import send_weekly_report
+        cfg = load_config()
+        b_channel = cfg.get("backup_system", {}).get("channel_id", -1004462851433)
+        ok, res_msg = await send_weekly_report(context.bot, b_channel, is_manual=True)
+        try:
+            if wait_msg:
+                await wait_msg.delete()
+        except Exception:
+            pass
+        if ok:
+            await safe_reply(update, f"✅ <b>Relatório Enviado!</b>\n{res_msg}", parse_mode=ParseMode.HTML)
+        else:
+            await safe_reply(update, f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+
+    async def cmd_canalbackup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Consulta ou altera o canal de backup e relatórios."""
+        if not await self._require_admin(update):
+            await safe_reply(update, "⛔ Apenas administradores podem configurar o canal de backup.")
+            return
+        await self._clean_admin_trigger(update)
+        cfg = load_config()
+        b_cfg = cfg.setdefault("backup_system", {
+            "enabled": True, "channel_id": -1004462851433,
+            "daily_backup_enabled": True, "daily_backup_interval_hours": 24,
+            "last_daily_backup_timestamp": 0, "weekly_report_enabled": True,
+            "weekly_report_interval_days": 7, "last_weekly_report_timestamp": 0
+        })
+
+        if not context.args:
+            cur_ch = b_cfg.get("channel_id", -1004462851433)
+            await safe_reply(
+                update,
+                f"💾 <b>Canal de Backup & Relatórios Atual:</b> <code>{cur_ch}</code>\n\n"
+                "Para alterar, use: <code>/canalbackup -1004462851433</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        raw_id = context.args[0].strip()
+        try:
+            new_id = int(raw_id)
+            b_cfg["channel_id"] = new_id
+            save_config(cfg)
+            await safe_reply(
+                update,
+                f"✅ Canal de Backup & Relatórios atualizado para: <code>{new_id}</code>!",
+                parse_mode=ParseMode.HTML
+            )
+        except ValueError:
+            await safe_reply(update, "❌ ID inválido. Deve ser numérico (ex: <code>-1004462851433</code>).", parse_mode=ParseMode.HTML)
+
 
 
 

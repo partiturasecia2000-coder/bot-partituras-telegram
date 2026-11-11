@@ -679,6 +679,12 @@ def main():
             except Exception as e_yt:
                 logger.error(f"Erro no ciclo do YouTube notifier: {e_yt}", exc_info=True)
 
+            try:
+                from modules.backup_manager import check_backup_and_report_cycle
+                await check_backup_and_report_cycle(application.bot)
+            except Exception as e_bkp:
+                logger.error(f"Erro no ciclo de backup e relatórios: {e_bkp}", exc_info=True)
+
             await asyncio.sleep(10)
 
     async def post_init(application):
@@ -850,6 +856,9 @@ def main():
     app.add_handler(CommandHandler(["removeryoutube", "excluiryoutube", "delyoutube"], admin_cmd_handler.cmd_removeryoutube))
     app.add_handler(CommandHandler(["listayoutube", "canaisyoutube", "ytchannels"], admin_cmd_handler.cmd_listayoutube))
     app.add_handler(CommandHandler(["testaryoutube", "testyoutube"], admin_cmd_handler.cmd_testaryoutube))
+    app.add_handler(CommandHandler(["fazerbackup", "backupagora", "backup"], admin_cmd_handler.cmd_fazerbackup))
+    app.add_handler(CommandHandler(["relatoriosemanal", "relatoriobot", "statussemanal"], admin_cmd_handler.cmd_relatoriosemanal))
+    app.add_handler(CommandHandler(["canalbackup", "setcanalbackup"], admin_cmd_handler.cmd_canalbackup))
 
     async def cmd_whitelist_hub(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await admin_cache.is_admin(update.effective_chat, update.effective_user.id):

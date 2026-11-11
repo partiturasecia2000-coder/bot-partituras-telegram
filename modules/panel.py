@@ -40,6 +40,11 @@ from modules.youtube_notifier import (
     send_youtube_test_card,
     fetch_youtube_channel_videos
 )
+from modules.backup_manager import (
+    generate_sub_backup,
+    send_daily_backup,
+    send_weekly_report
+)
 from modules.recurring import (
     format_interval,
     format_interval_display,
@@ -355,11 +360,15 @@ def generate_hub_system(cfg: dict):
     nm = cfg.get("night_mode", {})
     nm_on = nm.get("enabled", False)
     tz_label = get_timezone_label(cfg)
+    b_cfg = cfg.get("backup_system", {})
+    bkp_on = b_cfg.get("enabled", True) and (b_cfg.get("daily_backup_enabled", True) or b_cfg.get("weekly_report_enabled", True))
+    bkp_dest = b_cfg.get("channel_id", -1004462851433)
 
     lines = [
         "⚙️ *SISTEMA & COMUNIDADE*\n",
-        "Gerencie as salas integradas, auditoria e preferências gerais:\n",
+        "Gerencie as salas integradas, auditoria, backups e preferências gerais:\n",
         f"• 👥 *Grupos Vinculados:* `{len(groups)}` | 📢 *Canais:* `{len(channels)}`",
+        f"• 💾 *Backups & Relatórios:* {status_icon(bkp_on)} (Canal `{bkp_dest}`)",
         f"• 🌙 *Modo Noturno (Silêncio):* {status_icon(nm_on)}",
         f"• 📡 *Canal de Logs de Auditoria:* {status_icon(has_logs)}",
         f"• 🕒 *Fuso Horário:* `{tz_label}`\n"
@@ -372,14 +381,15 @@ def generate_hub_system(cfg: dict):
             InlineKeyboardButton("🛡️ Whitelist & Links ▾", callback_data="cfg:sub:whitelist_hub")
         ],
         [
+            InlineKeyboardButton(f"💾 Backups & Relatórios {status_icon(bkp_on)} ▾", callback_data="cfg:sub:backup"),
+            InlineKeyboardButton(f"📡 Logs {status_icon(has_logs)} ▾", callback_data="cfg:sub:logs")
+        ],
+        [
             InlineKeyboardButton(f"🌙 Modo Noturno {status_icon(nm_on)} ▾", callback_data="cfg:sub:nightmode"),
-            InlineKeyboardButton(f"📡 Canal de Logs {status_icon(has_logs)} ▾", callback_data="cfg:sub:logs")
+            InlineKeyboardButton(f"🕒 Fuso Horário ({tz_label}) ▾", callback_data="cfg:sub:timezone")
         ],
         [
-            InlineKeyboardButton(f"🕒 Fuso Horário ({tz_label}) ▾", callback_data="cfg:sub:timezone"),
-            InlineKeyboardButton("ℹ️ Versão & Docs", callback_data="cfg:sub:docs")
-        ],
-        [
+            InlineKeyboardButton("ℹ️ Versão & Docs", callback_data="cfg:sub:docs"),
             InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
         ]
     ]
@@ -2747,6 +2757,37 @@ class InteractivePanelHandler:
                 await msg.reply_text(f"⚠️ {res_text}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
             return True
 
+        if action == "backup_channel":
+            raw_input = msg.text.strip() if msg.text else ""
+            if not raw_input:
+                await msg.reply_text("❌ Por favor, envie o ID numérico do canal (ex: -1004462851433), ou digite /cancelar.")
+                return True
+
+            try:
+                ch_id = int(raw_input)
+            except ValueError:
+                await msg.reply_text("❌ ID inválido. O ID do canal deve ser numérico (ex: <code>-1004462851433</code>). Tente novamente ou digite /cancelar.", parse_mode=ParseMode.HTML)
+                return True
+
+            del self.pending_inputs[user.id]
+            cfg = load_config()
+            b_cfg = cfg.setdefault("backup_system", {
+                "enabled": True, "channel_id": -1004462851433,
+                "daily_backup_enabled": True, "daily_backup_interval_hours": 24,
+                "last_daily_backup_timestamp": 0, "weekly_report_enabled": True,
+                "weekly_report_interval_days": 7, "last_weekly_report_timestamp": 0
+            })
+            b_cfg["channel_id"] = ch_id
+            save_config(cfg)
+
+            kb = [[InlineKeyboardButton("💾 Voltar a Backups", callback_data="cfg:sub:backup")]]
+            await msg.reply_text(
+                f"✅ Canal de Backup & Relatórios atualizado para: <code>{ch_id}</code>!",
+                reply_markup=InlineKeyboardMarkup(kb),
+                parse_mode=ParseMode.HTML
+            )
+            return True
+
         if action == "youtube_target":
             raw_input = msg.text.strip() if msg.text else ""
             if not raw_input:
@@ -4425,6 +4466,86 @@ class InteractivePanelHandler:
                 await query.message.reply_text(f"🚀 {res_msg}", parse_mode=ParseMode.HTML)
             else:
                 await query.message.reply_text(f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+            return
+
+        # Submenu Backups & Relatórios
+        if data == "cfg:sub:backup":
+            await query.answer()
+            text, markup = generate_sub_backup(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:toggle:daily_bkp":
+            b_cfg = cfg.setdefault("backup_system", {
+                "enabled": True, "channel_id": -1004462851433,
+                "daily_backup_enabled": True, "daily_backup_interval_hours": 24,
+                "last_daily_backup_timestamp": 0, "weekly_report_enabled": True,
+                "weekly_report_interval_days": 7, "last_weekly_report_timestamp": 0
+            })
+            b_cfg["daily_backup_enabled"] = not b_cfg.get("daily_backup_enabled", True)
+            save_config(cfg)
+            await query.answer("Status do Backup Diário alterado!")
+            text, markup = generate_sub_backup(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:toggle:weekly_rep":
+            b_cfg = cfg.setdefault("backup_system", {
+                "enabled": True, "channel_id": -1004462851433,
+                "daily_backup_enabled": True, "daily_backup_interval_hours": 24,
+                "last_daily_backup_timestamp": 0, "weekly_report_enabled": True,
+                "weekly_report_interval_days": 7, "last_weekly_report_timestamp": 0
+            })
+            b_cfg["weekly_report_enabled"] = not b_cfg.get("weekly_report_enabled", True)
+            save_config(cfg)
+            await query.answer("Status do Relatório Semanal alterado!")
+            text, markup = generate_sub_backup(cfg)
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if data == "cfg:bkp:now":
+            await query.answer("Gerando e enviando arquivo ZIP de backup...")
+            b_channel = cfg.get("backup_system", {}).get("channel_id", -1004462851433)
+            ok, res_msg = await send_daily_backup(context.bot, b_channel, is_manual=True)
+            if ok:
+                await query.message.reply_text(f"💾 {res_msg}", parse_mode=ParseMode.HTML)
+            else:
+                await query.message.reply_text(f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+            cfg = load_config()
+            text, markup = generate_sub_backup(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        if data == "cfg:rep:now":
+            await query.answer("Gerando e enviando relatório semanal...")
+            b_channel = cfg.get("backup_system", {}).get("channel_id", -1004462851433)
+            ok, res_msg = await send_weekly_report(context.bot, b_channel, is_manual=True)
+            if ok:
+                await query.message.reply_text(f"📊 {res_msg}", parse_mode=ParseMode.HTML)
+            else:
+                await query.message.reply_text(f"⚠️ {res_msg}", parse_mode=ParseMode.HTML)
+            cfg = load_config()
+            text, markup = generate_sub_backup(cfg)
+            try:
+                await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+            return
+
+        if data == "cfg:bkp:channel":
+            await query.answer()
+            self.pending_inputs[user.id] = {"action": "backup_channel"}
+            cur_ch = cfg.get("backup_system", {}).get("channel_id", -1004462851433)
+            prompt = (
+                "🎯 <b>Definir Canal de Backup & Relatórios</b>\n\n"
+                f"Canal atual configurado: <code>{cur_ch}</code>\n\n"
+                "Envie o ID numérico do canal (ex: <code>-1004462851433</code>) ou encaminhe uma mensagem dele.\n\n"
+                "Envie agora ou digite /cancelar:"
+            )
+            await query.message.reply_text(prompt, parse_mode=ParseMode.HTML)
             return
 
         if data == "cfg:sub:cmd_clean":

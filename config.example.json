@@ -126,5 +126,15 @@
                 "last_video_id": ""
             }
         ]
+    },
+    "backup_system": {
+        "enabled": true,
+        "channel_id": -1004462851433,
+        "daily_backup_enabled": true,
+        "daily_backup_interval_hours": 24,
+        "last_daily_backup_timestamp": 0,
+        "weekly_report_enabled": true,
+        "weekly_report_interval_days": 7,
+        "last_weekly_report_timestamp": 0
     }
 }

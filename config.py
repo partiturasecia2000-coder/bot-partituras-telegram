@@ -185,6 +185,16 @@ DEFAULT_CONFIG = {
         "target_chat": "@partiturasecia",
         "check_interval_minutes": 5,
         "channels": []
+    },
+    "backup_system": {
+        "enabled": True,
+        "channel_id": -1004462851433,
+        "daily_backup_enabled": True,
+        "daily_backup_interval_hours": 24,
+        "last_daily_backup_timestamp": 0,
+        "weekly_report_enabled": True,
+        "weekly_report_interval_days": 7,
+        "last_weekly_report_timestamp": 0
     }
 }
 
