@@ -574,7 +574,7 @@ class AdminCommandHandler:
         )
         await safe_reply(update, text, parse_mode=ParseMode.MARKDOWN)
 
-    async def cmd_ban(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def cmd_ban(self, update: Update, context: ContextTypes.DEFAULT_TYPE, delete_replied: bool = False):
         """Bane o usuário respondido (permanente ou temporário: /ban 1d, /ban 2h)."""
         if not await self._require_admin(update):
             return
@@ -583,9 +583,10 @@ class AdminCommandHandler:
         chat = update.effective_chat
         del_sec = self._get_notice_delay(15)
 
+        cmd_name = "/delban" if delete_replied else "/ban"
         if not msg.reply_to_message or not msg.reply_to_message.from_user:
             await self._clean_admin_trigger(update)
-            notice = await chat.send_message("⚠️ Responda à mensagem do usuário com `/ban [tempo] [motivo]` (Ex: `/ban 1d Spam` ou `/ban 2h`).", parse_mode=ParseMode.MARKDOWN)
+            notice = await chat.send_message(f"⚠️ Responda à mensagem do usuário com `{cmd_name} [tempo] [motivo]` (Ex: `{cmd_name} 1d Spam` ou `{cmd_name} 2h`).", parse_mode=ParseMode.MARKDOWN)
             if del_sec > 0:
                 schedule_message_deletion(context, chat.id, notice.message_id, 8)
             return
@@ -598,6 +599,12 @@ class AdminCommandHandler:
         until_date = None
         if delta:
             until_date = datetime.now(timezone.utc) + delta
+
+        if delete_replied and msg.reply_to_message:
+            try:
+                await msg.reply_to_message.delete()
+            except Exception as e_del:
+                logger.warning(f"Erro ao apagar mensagem do usuário em delban: {e_del}")
 
         await self._clean_admin_trigger(update)
 
@@ -612,6 +619,9 @@ class AdminCommandHandler:
                 resp_text = f"🔨 Usuário <b>{html.escape(target_user.first_name)}</b> foi banido permanentemente."
                 if reason and reason != "Comando /ban administrativo":
                     resp_text += f"\nMotivo: <i>{html.escape(reason)}</i>"
+
+            if delete_replied:
+                resp_text += "\n🗑️ <i>Mensagem infratora apagada.</i>"
 
             notice = await chat.send_message(resp_text, parse_mode=ParseMode.HTML)
             if del_sec > 0:
@@ -629,7 +639,7 @@ class AdminCommandHandler:
         except Exception as e:
             await msg.reply_text(f"❌ Não foi possível banir o usuário: {e}")
 
-    async def cmd_kick(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def cmd_kick(self, update: Update, context: ContextTypes.DEFAULT_TYPE, delete_replied: bool = False):
         """Remove o usuário do grupo sem bloqueio definitivo (apenas admins)."""
         if not await self._require_admin(update):
             return
@@ -638,15 +648,22 @@ class AdminCommandHandler:
         chat = update.effective_chat
         del_sec = self._get_notice_delay(15)
 
+        cmd_name = "/delkick" if delete_replied else "/kick"
         if not msg.reply_to_message or not msg.reply_to_message.from_user:
             await self._clean_admin_trigger(update)
-            notice = await chat.send_message("⚠️ Responda à mensagem do usuário que deseja remover com `/kick`.")
+            notice = await chat.send_message(f"⚠️ Responda à mensagem do usuário que deseja remover com `{cmd_name}`.")
             if del_sec > 0:
                 schedule_message_deletion(context, chat.id, notice.message_id, 8)
             return
 
         target_user = msg.reply_to_message.from_user
         reason = " ".join(context.args) if context.args else "Comando /kick administrativo"
+
+        if delete_replied and msg.reply_to_message:
+            try:
+                await msg.reply_to_message.delete()
+            except Exception as e_del:
+                logger.warning(f"Erro ao apagar mensagem do usuário em delkick: {e_del}")
 
         await self._clean_admin_trigger(update)
 
@@ -655,6 +672,9 @@ class AdminCommandHandler:
             resp_text = f"👢 Usuário <b>{html.escape(target_user.first_name)}</b> foi removido do grupo."
             if reason and reason != "Comando /kick administrativo":
                 resp_text += f"\nMotivo: <i>{html.escape(reason)}</i>"
+
+            if delete_replied:
+                resp_text += "\n🗑️ <i>Mensagem infratora apagada.</i>"
 
             notice = await chat.send_message(resp_text, parse_mode=ParseMode.HTML)
             if del_sec > 0:
@@ -672,7 +692,7 @@ class AdminCommandHandler:
         except Exception as e:
             await msg.reply_text(f"❌ Não foi possível remover o usuário: {e}")
 
-    async def cmd_mute(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def cmd_mute(self, update: Update, context: ContextTypes.DEFAULT_TYPE, delete_replied: bool = False):
         """Silencia o usuário respondido (tempo flexível: /mute 30m, /mute 2h, /mute 1d)."""
         if not await self._require_admin(update):
             return
@@ -681,9 +701,10 @@ class AdminCommandHandler:
         chat = update.effective_chat
         del_sec = self._get_notice_delay(15)
 
+        cmd_name = "/delmute" if delete_replied else "/mute"
         if not msg.reply_to_message or not msg.reply_to_message.from_user:
             await self._clean_admin_trigger(update)
-            notice = await chat.send_message("⚠️ Responda à mensagem do usuário com `/mute [tempo] [motivo]` (Ex: `/mute 30m Flood` ou `/mute 2h`).", parse_mode=ParseMode.MARKDOWN)
+            notice = await chat.send_message(f"⚠️ Responda à mensagem do usuário com `{cmd_name} [tempo] [motivo]` (Ex: `{cmd_name} 30m Flood` ou `{cmd_name} 2h`).", parse_mode=ParseMode.MARKDOWN)
             if del_sec > 0:
                 schedule_message_deletion(context, chat.id, notice.message_id, 8)
             return
@@ -699,6 +720,12 @@ class AdminCommandHandler:
 
         until_date = datetime.now(timezone.utc) + delta
 
+        if delete_replied and msg.reply_to_message:
+            try:
+                await msg.reply_to_message.delete()
+            except Exception as e_del:
+                logger.warning(f"Erro ao apagar mensagem do usuário em delmute: {e_del}")
+
         await self._clean_admin_trigger(update)
 
         try:
@@ -710,6 +737,9 @@ class AdminCommandHandler:
             resp_text = f"🔇 Usuário <b>{html.escape(target_user.first_name)}</b> foi silenciado por <b>{time_label}</b>."
             if reason and reason != f"Silenciado por {time_label}":
                 resp_text += f"\nMotivo: <i>{html.escape(reason)}</i>"
+
+            if delete_replied:
+                resp_text += "\n🗑️ <i>Mensagem infratora apagada.</i>"
 
             notice = await chat.send_message(resp_text, parse_mode=ParseMode.HTML)
             if del_sec > 0:
@@ -794,7 +824,7 @@ class AdminCommandHandler:
         confirm_msg = await chat.send_message(f"🧹 {deleted} mensagem(ns) foram apagadas.")
         schedule_message_deletion(context, chat.id, confirm_msg.message_id, 5)
 
-    async def cmd_warn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def cmd_warn(self, update: Update, context: ContextTypes.DEFAULT_TYPE, delete_replied: bool = False):
         """Aplica uma advertência manual a um usuário (3 advertências = ban)."""
         if not await self._require_admin(update):
             return
@@ -803,9 +833,10 @@ class AdminCommandHandler:
         chat = update.effective_chat
         del_sec = self._get_notice_delay(15)
 
+        cmd_name = "/delwarn" if delete_replied else "/warn"
         if not msg.reply_to_message or not msg.reply_to_message.from_user:
             await self._clean_admin_trigger(update)
-            notice = await chat.send_message("⚠️ Responda à mensagem do usuário que deseja advertir com `/warn [motivo]`.", parse_mode=ParseMode.MARKDOWN)
+            notice = await chat.send_message(f"⚠️ Responda à mensagem do usuário que deseja advertir com `{cmd_name} [motivo]`.", parse_mode=ParseMode.MARKDOWN)
             if del_sec > 0:
                 schedule_message_deletion(context, chat.id, notice.message_id, 8)
             return
@@ -823,16 +854,24 @@ class AdminCommandHandler:
         curr_warns = self.user_warnings.get(w_key, 0) + 1
         self.user_warnings[w_key] = curr_warns
 
+        if delete_replied and msg.reply_to_message:
+            try:
+                await msg.reply_to_message.delete()
+            except Exception as e_del:
+                logger.warning(f"Erro ao apagar mensagem do usuário em delwarn: {e_del}")
+
         await self._clean_admin_trigger(update)
 
         safe_name = target_user.first_name
+        del_note = "\n🗑️ _Mensagem infratora apagada._" if delete_replied else ""
+
         if curr_warns >= 3:
             try:
                 await chat.ban_member(user_id=target_user.id)
                 self.user_warnings.pop(w_key, None)
                 notice = await chat.send_message(
                     f"🔨 *{safe_name} atingiu 3/3 advertências e foi BANIDO(A) do grupo!*\n"
-                    f"📌 Motivo: _{reason}_",
+                    f"📌 Motivo: _{reason}_{del_note}",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 if del_sec > 0:
@@ -851,7 +890,7 @@ class AdminCommandHandler:
         else:
             notice = await chat.send_message(
                 f"❗ *Advertência ({curr_warns}/3)* aplicada a *{safe_name}*!\n"
-                f"📌 Motivo: _{reason}_\n"
+                f"📌 Motivo: _{reason}_{del_note}\n"
                 f"⚠️ Ao atingir 3 advertências, o usuário será banido automaticamente.",
                 parse_mode=ParseMode.MARKDOWN
             )
@@ -3537,6 +3576,44 @@ class AdminCommandHandler:
             )
         except ValueError:
             await safe_reply(update, "❌ ID inválido. Deve ser numérico (ex: <code>-1004462851433</code>).", parse_mode=ParseMode.HTML)
+
+    async def cmd_delban(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Bane o usuário respondido E apaga a mensagem infratora."""
+        await self.cmd_ban(update, context, delete_replied=True)
+
+    async def cmd_delkick(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Remove o usuário respondido E apaga a mensagem infratora."""
+        await self.cmd_kick(update, context, delete_replied=True)
+
+    async def cmd_delmute(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Silencia o usuário respondido E apaga a mensagem infratora."""
+        await self.cmd_mute(update, context, delete_replied=True)
+
+    async def cmd_delwarn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Aplica advertência no usuário respondido E apaga a mensagem infratora."""
+        await self.cmd_warn(update, context, delete_replied=True)
+
+    async def cmd_del(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Apaga a mensagem respondida imediatamente (ou limpa mensagens recentes se não for resposta)."""
+        if not await self._require_admin(update):
+            return
+
+        msg = update.effective_message
+        chat = update.effective_chat
+        del_sec = self._get_notice_delay(8)
+
+        if msg.reply_to_message:
+            target_msg = msg.reply_to_message
+            await self._clean_admin_trigger(update)
+            try:
+                await target_msg.delete()
+            except Exception as e:
+                notice = await chat.send_message(f"❌ Não foi possível apagar a mensagem: {e}")
+                if del_sec > 0:
+                    schedule_message_deletion(context, chat.id, notice.message_id, 8)
+            return
+
+        await self.cmd_limpar(update, context)
 
 
 
