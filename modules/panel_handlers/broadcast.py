@@ -110,194 +110,39 @@ class BroadcastMixin:
 
 
     async def execute_wizard_send(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
-        """Dispara a transmissão para os chats selecionados com distribuição gradual e gera relatório detalhado."""
+        """O envio imediato usa a mesma fila e o mesmo relatório dos agendados."""
         state = self._get_or_create_wizard_state(user_id)
         if not state or (not state.get("text") and not state.get("media_id")):
-            p = self.pending_inputs.get(user_id, {})
-            if isinstance(p, dict):
-                inner = p.get("state")
-                if isinstance(inner, dict):
-                    state.update(inner)
-                for k in ("text", "media_type", "media_id", "buttons", "pin", "target", "delay_seconds"):
-                    if k in p and p[k]:
-                        state[k] = p[k]
-
-        if not state:
-            if update.callback_query:
-                await update.callback_query.answer("⚠️ Nenhuma transmissão pendente encontrada.", show_alert=True)
+            await update.effective_message.reply_text("⚠️ Prepare o texto ou a mídia antes de enviar.")
             return
-
         cfg = load_config()
-        bot = context.bot
-        target = state.get("target", "main_channel")
-        text = state.get("text", "")
-        media_type = state.get("media_type")
-        media_id = state.get("media_id")
-        buttons = state.get("buttons", [])
-        pin = state.get("pin", False)
-        delay_sec = state.get("delay_seconds", 2)
-
-        # Se texto estiver vazio mas não tem mídia, fallback para texto padrão
-        if not text and not media_id:
-            text = "📢 Comunicado Oficial"
-            state["text"] = text
-
-        targets = get_wizard_targets_list(target, cfg)
-        if not targets:
-            msg = update.effective_message
-            if msg:
-                await msg.reply_text("⚠️ Nenhum chat de destino encontrado para esse envio.")
+        if not get_wizard_targets_list(state.get("target", "main_channel"), cfg):
+            await update.effective_message.reply_text("⚠️ Nenhum destino encontrado.")
             return
-
+        existing = cfg.setdefault("scheduled_transmissions", [])
+        item_id = max(int(time.time()*1000), max((x.get("id", 0) for x in existing), default=0)+1)
+        entry = {key: copy.deepcopy(state.get(key)) for key in ("text", "media_type", "media_id", "buttons", "pin", "target", "delay_seconds")}
+        entry.update(id=item_id, target=state.get("target", "main_channel"),
+                     delay_seconds=state.get("delay_seconds", 2), buttons=state.get("buttons", []),
+                     status="pending", schedule_timestamp=time.time(), schedule_display="Envio imediato",
+                     creator_id=user_id, created_at=datetime.now().isoformat())
+        existing.append(entry)
+        if not save_config(cfg):
+            await update.effective_message.reply_text("⚠️ Não foi possível salvar; o rascunho foi mantido.")
+            return
+        self.wizard_states.pop(user_id, None)
+        self.pending_inputs.pop(user_id, None)
         if update.callback_query:
             try:
                 await update.callback_query.edit_message_reply_markup(reply_markup=None)
             except Exception:
                 pass
+        from modules.scheduler import start_scheduled_transmission
+        start_scheduled_transmission(item_id, force=True)
+        await update.effective_message.reply_text(
+            "📨 Transmissão registrada. Acompanhe o resultado por destino:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ver resultados", callback_data=f"cfg:tx:{item_id}:1")]]))
 
-        from modules.utils import build_rich_buttons_markup, smart_send_message, smart_send_photo, smart_send_video
-        import telegram.error
-        markup = build_rich_buttons_markup(buttons)
-
-        sent_count = 0
-        fail_count = 0
-        errors = []
-
-        from config import normalize_chat_id
-        all_chats_map = {}
-        for x in cfg.get("linked_groups", []) + cfg.get("linked_channels", []):
-            raw_id = x.get("id")
-            norm_id = normalize_chat_id(raw_id)
-            title = x.get("title") or f"Chat {norm_id}"
-            all_chats_map[raw_id] = title
-            all_chats_map[norm_id] = title
-        all_chats_map[-1001806380183] = "HC Sibelius"
-        delivered_names = []
-
-        for i, raw_cid in enumerate(targets):
-            if i > 0 and delay_sec > 0:
-                await asyncio.sleep(delay_sec)
-
-            cid = normalize_chat_id(raw_cid)
-            if cid in (-1002071806380183, -2071806380183, 2071806380183):
-                cid = -1001806380183
-            c_title = all_chats_map.get(cid) or all_chats_map.get(raw_cid, str(cid))
-            if "sibelius" in c_title.lower() or cid == -1001806380183:
-                c_title = "HC Sibelius"
-            logger.info(f"Transmitindo mensagem wizard para chat {cid} ({c_title})...")
-            try:
-                sent_msg = None
-                if media_type == "video" and media_id:
-                    sent_msg = await smart_send_video(bot, chat_id=cid, video=media_id, caption=text, reply_markup=markup)
-                elif media_type == "photo" and media_id:
-                    sent_msg = await smart_send_photo(bot, chat_id=cid, photo=media_id, caption=text, reply_markup=markup)
-                else:
-                    sent_msg = await smart_send_message(bot, chat_id=cid, text=text, reply_markup=markup)
-
-                if sent_msg:
-                    sent_count += 1
-                    delivered_names.append(c_title)
-                    logger.info(f"Sucesso ao entregar mensagem no chat {cid} ({c_title})")
-                    if pin and hasattr(sent_msg, "pin"):
-                        try:
-                            await sent_msg.pin(disable_notification=False)
-                        except Exception as e_pin:
-                            logger.debug(f"Não foi possível fixar mensagem no chat {cid}: {e_pin}")
-                    
-                    real_id = getattr(getattr(sent_msg, "chat", None), "id", cid)
-                    if real_id != raw_cid:
-                        logger.info(f"Auto-corrigindo chat '{c_title}' de {raw_cid} para {real_id} no config!")
-                        for g in cfg.get("linked_groups", []):
-                            if g.get("id") == raw_cid:
-                                g["id"] = real_id
-                        for c in cfg.get("linked_channels", []):
-                            if c.get("id") == raw_cid:
-                                c["id"] = real_id
-                        save_config(cfg)
-                else:
-                    fail_count += 1
-                    errors.append(f"Chat {c_title} ({cid}): Falha no envio (sem confirmação do Telegram)")
-                    logger.error(f"Falha ao enviar mensagem no chat {cid} ({c_title}): smart_send retornou None")
-            except telegram.error.RetryAfter as e_retry:
-                logger.warning(f"FloodWait de {e_retry.retry_after}s recebido no chat {cid} ({c_title}). Aguardando...")
-                await asyncio.sleep(e_retry.retry_after + 1)
-                try:
-                    if media_type == "video" and media_id:
-                        sent_msg = await smart_send_video(bot, chat_id=cid, video=media_id, caption=text, reply_markup=markup)
-                    elif media_type == "photo" and media_id:
-                        sent_msg = await smart_send_photo(bot, chat_id=cid, photo=media_id, caption=text, reply_markup=markup)
-                    else:
-                        sent_msg = await smart_send_message(bot, chat_id=cid, text=text, reply_markup=markup)
-                    if sent_msg:
-                        sent_count += 1
-                        delivered_names.append(c_title)
-                        logger.info(f"Sucesso ao entregar mensagem após retry no chat {cid} ({c_title})")
-                        if pin and hasattr(sent_msg, "pin"):
-                            try:
-                                await sent_msg.pin(disable_notification=False)
-                            except Exception:
-                                pass
-                except Exception as e_fail:
-                    fail_count += 1
-                    errors.append(f"Chat {c_title} ({cid}): {e_fail}")
-                    logger.error(f"Erro ao entregar no chat {cid} ({c_title}) após retry: {e_fail}")
-            except Exception as e_send:
-                fail_count += 1
-                errors.append(f"Chat {c_title} ({cid}): {e_send}")
-                logger.error(f"Erro ao transmitir para chat {cid} ({c_title}): {e_send}")
-
-        # Limpa o estado
-        self.wizard_states.pop(user_id, None)
-        if user_id in self.pending_inputs:
-            del self.pending_inputs[user_id]
-            self._save_pending_inputs()
-
-        dest_label = get_wizard_dest_label(target, cfg)
-        media_label = "🎥 Vídeo" if media_type == "video" else ("🖼️ Foto" if media_type == "photo" else "⚪ Texto")
-
-        report = (
-            "🎉 *TRANSMISSÃO CONCLUÍDA!*\n"
-            "🎼 ══════════════════════ 🎼\n\n"
-            f"• *Destino Escolhido:* `{dest_label}`\n"
-            f"• *Sucesso:* `{sent_count}` chat(s)\n"
-            f"• *Falhas:* `{fail_count}`\n"
-            f"• *Distribuição:* `{delay_sec}s entre cada chat (Envio Suave 🌊)`\n"
-            f"• *Fixado no Topo:* `{'Sim 📌' if pin else 'Não'}`\n"
-            f"• *Mídia:* `{media_label}`\n\n"
-        )
-        if delivered_names:
-            report += "📋 *Entregue com sucesso em:*\n" + "\n".join([f"  ✅ `{name}`" for name in delivered_names]) + "\n\n"
-
-        if target in ("all", "all_channels", "main_channel") and not cfg.get("linked_channels"):
-            report += "⚠️ *Aviso Importante:* O bot não possui canais vinculados no momento (`/canais`). Para conectar seu canal, use `/setcanal @seucanal`.\n\n"
-
-        if errors:
-            report += f"⚠️ *Detalhes das falhas:*\n" + "\n".join(errors[:3])
-
-        final_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Nova Transmissão", callback_data="cfg:wiz:start")],
-            [InlineKeyboardButton("🗓️ Ver Agendadas", callback_data="cfg:sched:list")],
-            [InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")]
-        ])
-
-        try:
-            await update.effective_message.reply_text(report, reply_markup=final_markup, parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            await update.effective_message.reply_text(report, reply_markup=final_markup)
-
-        # Envia Log de Auditoria
-        admin_user = update.effective_user
-        if admin_user:
-            adm_info = f"{admin_user.full_name} (@{admin_user.username})" if admin_user.username else admin_user.full_name
-            import html
-            await send_mod_log(
-                bot=bot,
-                event_type="say",
-                title="Transmissão Guiada Realizada",
-                user_info=f"Destino: <b>{html.escape(dest_label)}</b> ({sent_count} chats)",
-                admin_info=f"<b>{html.escape(adm_info)}</b>",
-                details=f"Fixado: {'Sim' if pin else 'Não'} | Mídia: {media_label} | Delay: {delay_sec}s"
-            )
 
 
     async def cmd_agendados(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

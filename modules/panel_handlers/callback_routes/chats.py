@@ -228,24 +228,8 @@ async def on_cfg_chat_set_main(self, update, context, cfg, title):
 
 
 async def on_cfg_chat_unlink(self, update, context, cfg, title):
-    query = update.callback_query
-    chat = update.effective_chat
-    user = update.effective_user
-    data = query.data
-    parts = data.split(":")
-    chat_type = parts[3]
-    target_id = int(parts[4])
-    if chat_type == "grp":
-        from config import remove_linked_group
-        remove_linked_group(cfg, target_id)
-        await query.answer("Grupo desvinculado com sucesso!", show_alert=True)
-    else:
-        from config import remove_linked_channel
-        remove_linked_channel(cfg, target_id)
-        await query.answer("Canal desvinculado com sucesso!", show_alert=True)
-    text, markup = generate_chats_list_page(cfg)
-    await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-    return
+    from modules.confirmations import confirm_panel_action
+    await confirm_panel_action(self, update, context)
 
 
 async def on_cfg_chat_post_prompt(self, update, context, cfg, title):

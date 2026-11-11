@@ -375,41 +375,21 @@ async def handle_private_document(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def cmd_limpar_acervo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando administrativo para zerar o banco do acervo de partituras."""
     from modules.access import require_management_access
     if not await require_management_access(update):
         return
-    msg = update.effective_message
-    if not msg:
-        return
-    deleted = acervo_db.clear_all()
-    await msg.reply_text(
-        f"🗑️ <b>Acervo de Partituras Limpo com Sucesso!</b>\n\n"
-        f"Foram removidos <code>{deleted}</code> registros do banco.\n"
-        f"O acervo está 100% zerado e pronto para você enviar o <code>result.json</code>!",
-        parse_mode=ParseMode.HTML
-    )
+    from modules.confirmations import request_confirmation
+    await request_confirmation(update, context, 'acervo_clear', {}, 'Apagar TODOS os registros do acervo? Não há desfazer. Os arquivos nos canais do Telegram não serão apagados.', "acervo:menu")
+
 
 
 async def cmd_limpar_textos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando administrativo para varrer e remover mensagens de bate-papo/perguntas do acervo."""
     from modules.access import require_management_access
     if not await require_management_access(update):
         return
-    msg = update.effective_message
-    if not msg:
-        return
-    status_msg = await msg.reply_text("🧹 <i>Varrendo o banco e removendo mensagens de texto...</i>", parse_mode=ParseMode.HTML)
-    deleted = acervo_db.purge_text_chatter()
-    stats = acervo_db.get_stats()
-    tot = stats.get("total_files", 0)
-    await status_msg.edit_text(
-        f"🧹 <b>Limpeza de Mensagens Concluída!</b>\n\n"
-        f"• <b>Textos removidos:</b> <code>{deleted}</code>\n"
-        f"• <b>Partituras reais restantes no acervo:</b> <code>{tot}</code>\n\n"
-        f"Todas as suas partituras e áudios legítimos continuam 100% preservados!",
-        parse_mode=ParseMode.HTML
-    )
+    from modules.confirmations import request_confirmation
+    await request_confirmation(update, context, 'acervo_purge', {}, 'Remover do acervo os registros classificados como mensagens de texto? Confira seu backup antes de continuar.', "acervo:menu")
+
 
 
 # =====================================================================
@@ -980,10 +960,12 @@ def get_all_acervo_channels(cfg: dict) -> list:
     return result
 
 
-def generate_channel_links_menu_text_and_kb():
+def generate_channel_links_menu_text_and_kb(page=1):
     """Gera o menu com a lista de canais e seus links de convite para configuração."""
     cfg = load_config()
     channels = get_all_acervo_channels(cfg)
+    from modules.panel_lists import page_slice, navigation
+    channels, page, pages, _ = page_slice(channels, page, 5)
     fallback_chatlist = cfg.get("acervo_chatlist_url", "https://t.me/addlist/H5UNPP0h4FI3ZTNh")
 
     lines = [
@@ -1021,6 +1003,7 @@ def generate_channel_links_menu_text_and_kb():
                 InlineKeyboardButton(f"🔗 Configurar: {title[:20]}", callback_data=f"acervo:edit_link:{cid}")
             ])
 
+    kb += navigation("acervo:links:page", page, pages)
     lines.append("💡 <i>Toque em um canal para colar o link (t.me/+...), ou use /setlink.</i>")
     kb.append([InlineKeyboardButton("◀ Voltar ao Acervo", callback_data="acervo:menu")])
 
@@ -1184,14 +1167,9 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
     data = query.data
 
     if data == "acervo:purge_chatter":
-        await query.answer("Varrendo o acervo para remover mensagens de texto...", show_alert=False)
-        deleted = acervo_db.purge_text_chatter()
-        await query.answer(f"Limpeza concluída! {deleted} mensagens de texto removidas com sucesso.", show_alert=True)
-        text, markup = generate_acervo_dashboard_text_and_kb()
-        try:
-            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
-        except Exception:
-            pass
+        from modules.confirmations import request_confirmation
+        await request_confirmation(update, context, "acervo_purge", {},
+            "Remover do acervo os registros classificados como mensagens de texto? Confira seu backup antes de continuar.", "acervo:menu")
         return
 
     if data == "acervo:toggle:autoreply":
@@ -1287,9 +1265,10 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
             pass
         return
 
-    if data == "acervo:channel_links_menu":
+    if data == "acervo:channel_links_menu" or data.startswith("acervo:links:page:"):
         await query.answer()
-        text, markup = generate_channel_links_menu_text_and_kb()
+        page = int(data.split(":")[-1]) if data.startswith("acervo:links:page:") and data.split(":")[-1].isdigit() else 1
+        text, markup = generate_channel_links_menu_text_and_kb(page)
         try:
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         except Exception:
@@ -1363,10 +1342,13 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    if data == "acervo:scan:menu":
+    if data == "acervo:scan:menu" or data.startswith("acervo:scan:page:"):
         await query.answer()
         cfg = load_config()
         linked_c = cfg.get("linked_channels", [])
+        from modules.panel_lists import page_slice, navigation
+        page = int(data.split(":")[-1]) if data.startswith("acervo:scan:page:") and data.split(":")[-1].isdigit() else 1
+        linked_c, page, pages, _ = page_slice(linked_c, page, 6)
 
         lines = [
             "🎼 ══════════════════════ 🎼",
@@ -1387,13 +1369,14 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         buttons = []
         if linked_c:
-            for ch in linked_c[:6]:
+            for ch in linked_c:
                 cid = ch.get("id")
                 title = ch.get("title") or f"Canal {cid}"
                 buttons.append([InlineKeyboardButton(f"🔄 Varrer: {title[:25]}", callback_data=f"acervo:scan:do:{cid}")])
         else:
             buttons.append([InlineKeyboardButton("➕ Vincular um Canal Agora", callback_data="cfg:sub:link_channel")])
 
+        buttons += navigation("acervo:scan:page", page, pages)
         buttons.append([InlineKeyboardButton("🔍 Testar Busca", switch_inline_query_current_chat="")])
         buttons.append([InlineKeyboardButton("◀ Voltar ao Acervo", callback_data="acervo:menu")])
 

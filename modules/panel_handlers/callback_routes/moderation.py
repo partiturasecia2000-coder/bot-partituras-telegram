@@ -126,16 +126,8 @@ async def on_cfg_banned_view_all(self, update, context, cfg, title):
 
 
 async def on_cfg_banned_clear_all(self, update, context, cfg, title):
-    query = update.callback_query
-    chat = update.effective_chat
-    user = update.effective_user
-    data = query.data
-    cfg.setdefault("antispam", {})["banned_words"] = []
-    save_config(cfg)
-    await query.answer("Todas as palavras proibidas foram apagadas!")
-    text, markup = generate_sub_banned(cfg)
-    await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-    return
+    from modules.confirmations import confirm_panel_action
+    await confirm_panel_action(self, update, context)
 
 
 async def on_cfg_toggle_antispam(self, update, context, cfg, title):

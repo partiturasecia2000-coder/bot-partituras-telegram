@@ -1,35 +1,38 @@
-# Agendamentos — versão 3
+# Versão 4 — transmissões e navegação do painel
 
-Fonte: `bot_discloud_melhorado_v2.zip`, na pasta do projeto indicada pelo usuário. O ZIP anterior foi preservado. Nenhum deploy ou envio real foi realizado.
+Base: `bot_discloud_agendamentos_v3.zip`. O pacote anterior foi preservado. Nenhum deploy nem envio real foi realizado.
 
-## Problemas encontrados e alterações
+## Transmissões por destino
 
-- Recorrência, modo noturno e YouTube tinham dois acionadores periódicos: um loop contínuo e jobs do APScheduler. Os acionadores duplicados foram removidos.
-- `modules/scheduler.py` agora controla seis ciclos: recorrência, transmissões, modo noturno, YouTube, backup/relatórios e exclusões. Cada ciclo executa em sequência consigo mesmo; uma rotina lenta ou com erro não impede o avanço das demais. O serviço inicia no `post_init` e cancela/aguarda suas tarefas no `post_stop`.
-- Os cinco primeiros ciclos verificam condições a cada 10 segundos, após 3 segundos iniciais; o intervalo configurado do YouTube continua sendo respeitado pela rotina existente. Exclusões são consultadas a cada segundo. A duração das operações e a rede podem acrescentar atraso.
-- Transmissões são reservadas como `sending` no JSON antes de iniciar a task. Disparo manual e automático usam a mesma reserva e o mesmo controle de tarefas, evitando duas execuções simultâneas do mesmo ID no processo. Se a gravação falhar, o envio não é iniciado.
-- Ao reiniciar, transmissões deixadas em `sending` viram `interrupted`; falhas inesperadas viram `failed`. Elas aparecem em `/agendados` com aviso para conferir os destinos antes de reenviar. Não são retomadas automaticamente, pois parte da mensagem pode já ter sido entregue. Envios em andamento ficam visíveis e não oferecem cancelamento que não seria efetivamente aplicado.
-- Agendamentos pendentes vencidos continuam sendo processados ao iniciar. Recorrências com horário fixo diário passam a recuperar o horário do dia atual após atraso/reinício, respeitando filtros de datas/dias e o registro do último horário executado. Não há reposição dos dias anteriores.
-- Exclusões que passam por `schedule_message_deletion` ficam em `agendamentos.db`. Esse novo banco é criado automaticamente e não contém tokens. Reinícios retomam as exclusões pendentes, inclusive vencidas. Falhas transitórias têm até cinco tentativas; mensagens já apagadas são consideradas concluídas. Falta de permissão ou restrição permanente fica registrada como falha.
-- Os backups automáticos incluem o novo banco. Ambos os bancos SQLite são copiados usando a API de backup do SQLite, evitando cópias brutas de arquivos em uso.
-- O progresso de recorrência, YouTube e backup é mesclado com uma carga atual do JSON, reduzindo o risco de substituir configurações ou transmissões criadas enquanto uma rotina aguardava a rede.
-- `/tarefas`, exclusivo para administradores, mostra o estado dos ciclos, transmissões ativas e quantidade de exclusões pendentes/com falha.
+- As transmissões imediatas do assistente e as agendadas por `/comunicado` usam o mesmo motor e histórico persistente no `config.json` existente.
+- No primeiro disparo, a lista de destinos é normalizada, deduplicada e congelada. Novos canais vinculados depois não entram por acidente em uma tentativa posterior.
+- Cada destino registra estado, número de tentativas, IDs das partes confirmadas, horário e motivo resumido da falha. Textos divididos e fotos/vídeos com legendas longas registram as partes separadamente.
+- O relatório distingue **entregue**, **falha confirmada**, **sem confirmação** e **ainda não enviado**. Falta de permissão, destino inexistente, mídia inválida e limitações do Telegram recebem explicações sem exibir mensagens técnicas brutas.
+- **Tentar somente falhas confirmadas** exclui todos os destinos já entregues, sem confirmação ou não enviados. **Continuar destinos não enviados** trata apenas os destinos que ainda não começaram. As reservas do agendador impedem duas tentativas simultâneas do mesmo registro no processo.
+- Timeout, queda durante a requisição ou falha após entrega parcial ficam sem confirmação e não são reenviados automaticamente. A recuperação após reinício mantém os destinos confirmados, marca o destino em envio como incerto e devolve os destinos apenas enfileirados ao estado de não enviados.
+- O fallback de formatação deixou de repetir pedidos após erros de rede; rejeições confirmadas de formatação continuam permitindo os formatos alternativos. Falha ao fixar a mensagem ou ao enviar o relatório ao criador não transforma uma entrega em falha de envio.
+- A autocorreção de IDs confirmados pelo Telegram e o registro no canal de auditoria foram mantidos.
+
+## Paginação e confirmações
+
+- Paginação nas transmissões/histórico, resultados por destino, grupos/canais, respostas automáticas, destinos do assistente, links permitidos, canais do YouTube, palavras proibidas, links de entrada do acervo e seleção de canais para varredura. Recorrências e usuários da whitelist mantêm a paginação anterior.
+- Endereços longos deixam de ser incorporados aos callbacks: identificadores curtos evitam ultrapassar o limite de tamanho dos botões.
+- Confirmação antes de zerar o acervo, remover textos do acervo, apagar todas as palavras proibidas, excluir recorrências/respostas, desvincular chats, remover monitoramento do YouTube, remover links permitidos e executar `/limpar` no chat.
+- A confirmação é vinculada ao usuário, chat e mensagem; expira em dois minutos e só pode ser consumida uma vez. Cancelamento, reinício e perda de permissão impedem a execução. Se o item configurável mudar entre a prévia e a confirmação, é necessário abrir e confirmar novamente.
+- `/limpar` limita a seleção às mensagens anteriores ao comando original; mensagens novas não entram na limpeza.
 
 ## Validação
 
-- 38 testes automatizados aprovados, incluindo os 19 testes anteriores e 19 novos testes do agendador.
-- Cobertura nova: inicialização idempotente, integração dos hooks da aplicação, encerramento e cancelamento das tasks, isolamento entre ciclos, retomada de exclusões após reabrir o banco, prazos futuros, tentativas limitadas, mensagens já apagadas, ausência de job duplicado, reserva única de transmissão, falha de gravação, falha de envio, recuperação do estado após reinício, recorrência diária atrasada e preservação de edições recentes.
-- Backup testado com fila persistente recuperável e sem arquivos temporários residuais.
-- Checagem anterior de 52 funções de menus, importações, persistência, SQLite e durações aprovada. A tela de transmissões mudou intencionalmente para exibir estados de envio e interrupção.
-- Compilação e integridade do ZIP verificadas.
-- Testes locais em Windows, Python 3.14.3, usando as mesmas dependências fixadas da versão 2; chamadas externas simuladas. Não houve validação conectada ao Telegram, YouTube ou Discloud.
+**77 testes automatizados aprovados**, incluindo os 38 anteriores e 39 novos. Os novos casos verificam confirmação por destino, novas tentativas seletivas, destino congelado, timeout sem repetição, entregas parciais, falha de gravação após aceitação pelo Telegram, reinício durante a rede, envio imediato com histórico, correção de IDs, falha ao fixar/notificar, proteção e expiração de confirmações, permissões, paginação e acesso aos últimos canais do acervo.
 
-## Preservação e limites
+Também passaram a checagem de 52 funções de menus/importações/persistência/SQLite/durações, compilação dos arquivos Python e verificação de referências globais dos módulos alterados. A integridade e o conteúdo do ZIP final foram conferidos.
 
-`discloud.config`, `Procfile`, `config.py`, configuração de exemplo, dependências e mídias permanecem como na versão 2. O ponto de entrada continua sendo `main.py`. Nenhum token foi removido ou divulgado.
+Testes locais/offline em Windows, Python 3.14.3 e dependências fixadas da versão 3; chamadas externas simuladas. Não houve validação conectada ao Telegram, YouTube ou Discloud.
 
-Mantenha os dados existentes da hospedagem: `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db` e, após o primeiro uso desta versão, `agendamentos.db`. O pacote não inclui bancos ou configurações de produção.
+## Atualização e limites
 
-Exclusões agendadas pela versão anterior apenas em memória não podem ser recuperadas retroativamente. Timers específicos de captcha, respostas atrasadas e ações avulsas que não passam pelo helper de exclusão não foram migrados para persistência nesta etapa. O JobQueue permanece disponível para esses usos pontuais.
+Configuração Discloud, `Procfile`, `config.py`, configuração de exemplo, dependências e mídias foram preservados. Nenhuma credencial foi removida ou divulgada. Preserve `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db` e `agendamentos.db` da hospedagem ao atualizar.
 
-Não há garantia de entrega exatamente uma vez: uma queda entre a aceitação de uma mensagem pelo Telegram e sua confirmação local continua sendo uma situação ambígua. Por isso, envios interrompidos exigem revisão manual e podem repetir mensagens se reenviados. A aplicação deve continuar usando uma única instância por token/conjunto de dados; o controle desta versão não é um coordenador distribuído.
+O histórico detalhado é criado para novos envios do assistente `/comunicado`, imediatos ou agendados. Envios antigos não possuem confirmações por destino e não recebem botão de reenvio seletivo. Comandos avulsos como `/falar`, `/anunciar` e `/canal`, assim como as mensagens recorrentes, mantêm seus fluxos próprios e não são convertidos para esse histórico nesta versão. Use o assistente para obter o acompanhamento novo.
+
+“Entregue” significa que a API confirmou o envio, não que alguém leu a mensagem. Não existe garantia de entrega exatamente uma vez em uma queda entre Telegram e gravação local; resultados sem confirmação exigem conferência no destino e permanecem fora das novas tentativas. Os motivos exibidos são categorias resumidas, sem guardar o texto bruto das exceções. Mantenha uma única instância por token/conjunto de dados.

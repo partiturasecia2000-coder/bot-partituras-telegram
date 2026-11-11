@@ -16,6 +16,15 @@ class CallbacksMixin:
             await query.answer("⛔ Apenas administradores podem usar estes botões.", show_alert=True)
             return
 
+        from modules.confirmations import handle_confirmation, confirm_panel_action
+        from modules.panel_navigation import handle_navigation
+        if await handle_confirmation(update, context, self):
+            return
+        if await confirm_panel_action(self, update, context):
+            return
+        if await handle_navigation(self, update, context):
+            return
+
         cfg = load_config()
         title = chat.title or "Grupo"
 

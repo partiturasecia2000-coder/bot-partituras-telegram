@@ -100,20 +100,8 @@ async def on_cfg_rec_toggle(self, update, context, cfg, title):
 
 
 async def on_cfg_rec_del(self, update, context, cfg, title):
-    query = update.callback_query
-    chat = update.effective_chat
-    user = update.effective_user
-    data = query.data
-    parts = data.split(":")
-    msg_id = int(parts[3])
-    page = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 1
-    rec_list = cfg.get("recurring_messages", [])
-    cfg["recurring_messages"] = [m for m in rec_list if m.get("id") != msg_id]
-    save_config(cfg)
-    await query.answer(f"Mensagem #{msg_id} apagada!")
-    text, markup = generate_recurring_list(title, cfg, page=page)
-    await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-    return
+    from modules.confirmations import confirm_panel_action
+    await confirm_panel_action(self, update, context)
 
 
 async def on_cfg_rec_clone(self, update, context, cfg, title):

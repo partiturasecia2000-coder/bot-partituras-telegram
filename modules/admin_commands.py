@@ -801,28 +801,18 @@ class AdminCommandHandler:
             await msg.reply_text(f"❌ Erro ao desmutar usuário: {e}")
 
     async def cmd_limpar(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Apaga as últimas N mensagens enviadas no grupo (ex: /limpar 10)."""
+        """Solicita confirmação antes de remover mensagens anteriores ao comando."""
         if not await self._require_admin(update):
             return
-
-        msg = update.effective_message
-        chat = update.effective_chat
-
         count = 5
         if context.args and context.args[0].isdigit():
-            count = min(int(context.args[0]), 100)
+            count = max(1,min(int(context.args[0]),100))
+        from modules.confirmations import request_confirmation
+        await request_confirmation(update, context, "chat_purge",
+            {"chat_id":update.effective_chat.id,"anchor":update.effective_message.message_id,"count":count},
+            f"Apagar até {count} mensagens anteriores a este comando? Mensagens novas não serão incluídas. Não há desfazer.",
+            "cfg:page:1")
 
-        await safe_delete_message(context.bot, chat.id, msg.message_id)
-
-        deleted = 0
-        for msg_id in range(msg.message_id - 1, msg.message_id - 1 - (count * 2), -1):
-            if deleted >= count:
-                break
-            if await safe_delete_message(context.bot, chat.id, msg_id):
-                deleted += 1
-
-        confirm_msg = await chat.send_message(f"🧹 {deleted} mensagem(ns) foram apagadas.")
-        schedule_message_deletion(context, chat.id, confirm_msg.message_id, 5)
 
     async def cmd_warn(self, update: Update, context: ContextTypes.DEFAULT_TYPE, delete_replied: bool = False):
         """Aplica uma advertência manual a um usuário (3 advertências = ban)."""

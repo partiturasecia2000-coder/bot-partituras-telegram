@@ -141,63 +141,10 @@ def generate_whitelist_users_page(cfg: dict, page: int = 1):
     return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
-def generate_allowed_links_page(cfg: dict):
-    """Gera página de gerenciamento de Links e Domínios Permitidos."""
-    domains = get_allowed_domains(cfg)
+def generate_allowed_links_page(cfg, page=1):
+    from modules.panel_lists import allowed_links
+    return allowed_links(cfg, page)
 
-    lines = [
-        "🌐 <b>LINKS E TRECHOS PERMITIDOS NA LISTA BRANCA</b>\n",
-        "Quando a proteção de <b>Bloquear Links</b> está ativa no grupo, "
-        "apenas links pertencentes a estes domínios ou trechos serão <b>permitidos</b>.",
-        "Qualquer outro link será apagado automaticamente.\n",
-        "💡 <i>Você pode cadastrar domínios inteiros (ex: <code>drive.google.com</code>), links completos ou partes de links (ex: <code>drive.google.com/drive/folders/...</code>)!</i>\n"
-    ]
-
-    if not domains:
-        lines.append("<i>⚠️ Nenhum link liberado! Todos os links externos serão bloqueados.</i>\n")
-    else:
-        lines.append(f"📋 <b>Endereços Atualmente Liberados ({len(domains)}):</b>")
-        for d in domains:
-            badge = "🟢"
-            if "google" in d:
-                badge = "📁"
-            elif "youtube" in d or "youtu.be" in d:
-                badge = "▶️"
-            elif "dropbox" in d:
-                badge = "📦"
-            elif "t.me" in d:
-                badge = "📢"
-            lines.append(f"  {badge} <code>{html.escape(d)}</code>")
-        lines.append("")
-
-    kb = []
-
-    # Linha de Presets 1-clique (Google Drive, YouTube, Dropbox, OneDrive)
-    preset_row = []
-    for p_key, p_data in PRESET_DOMAINS.items():
-        is_active = any(d in domains for d in p_data["domains"])
-        icon = "✅" if is_active else "➕"
-        preset_row.append(InlineKeyboardButton(f"{icon} {p_data['label']}", callback_data=f"cfg:preset:link:{p_key}"))
-        if len(preset_row) == 2:
-            kb.append(preset_row)
-            preset_row = []
-    if preset_row:
-        kb.append(preset_row)
-
-    # Botões para remover domínios existentes
-    if domains:
-        for d in domains[:10]:
-            label = d if len(d) <= 24 else f"{d[:11]}...{d[-10:]}"
-            kb.append([InlineKeyboardButton(f"🗑️ Remover: {label}", callback_data=f"cfg:del:allowed_link:{d}")])
-
-    kb.append([
-        InlineKeyboardButton("➕ Adicionar Link ou Trecho", callback_data="cfg:add:allowed_link")
-    ])
-    kb.append([
-        InlineKeyboardButton("◀ Voltar à Central Whitelist", callback_data="cfg:sub:whitelist_hub")
-    ])
-
-    return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
 async def handle_whitelist_callback(panel, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -293,15 +240,8 @@ async def handle_whitelist_callback(panel, update: Update, context: ContextTypes
         return True
 
     if data.startswith("cfg:del:allowed_link:"):
-        target_domain = data.split("cfg:del:allowed_link:")[1]
-        removed = remove_allowed_domain(cfg, target_domain)
-        lbl = "removido da lista!" if removed else "já não constava na lista."
-        await query.answer(f"Domínio {lbl}", show_alert=True)
-        text, markup = generate_allowed_links_page(cfg)
-        try:
-            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
-        except Exception:
-            pass
+        from modules.confirmations import confirm_panel_action
+        await confirm_panel_action(panel, update, context)
         return True
 
     if data.startswith("cfg:preset:link:"):

@@ -73,20 +73,8 @@ async def on_cfg_resp_toggle(self, update, context, cfg, title):
 
 
 async def on_cfg_resp_del(self, update, context, cfg, title):
-    query = update.callback_query
-    chat = update.effective_chat
-    user = update.effective_user
-    data = query.data
-    resp_id = int(data.split(":")[-1])
-    responders = cfg.get("auto_responses", [])
-    cfg["auto_responses"] = [r for r in responders if r.get("id") != resp_id]
-    save_config(cfg)
-    if self.auto_responder_handler:
-        self.auto_responder_handler.invalidate_cache(resp_id)
-    await query.answer(f"Resposta #{resp_id} excluída!")
-    text, markup = generate_auto_responder_list(title, cfg)
-    await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-    return
+    from modules.confirmations import confirm_panel_action
+    await confirm_panel_action(self, update, context)
 
 
 async def on_cfg_resp_cycle_cd(self, update, context, cfg, title):

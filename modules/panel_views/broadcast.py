@@ -175,62 +175,10 @@ def get_wizard_targets_list(target: str, cfg: dict) -> list[int]:
     return targets
 
 
-def generate_wizard_dest_menu(cfg: dict):
-    """Gera o Passo 1 do Assistente de Transmissão: Seleção de Destino."""
-    linked_g = cfg.get("linked_groups", [])
-    linked_c = cfg.get("linked_channels", [])
+def generate_wizard_dest_menu(cfg, page=1):
+    from modules.panel_lists import wizard_destinations
+    return wizard_destinations(cfg, page)
 
-    text = (
-        "📢 ══════════════════════ 📢\n"
-        "   *GUIA DE TRANSMISSÃO — PASSO 1/4*\n"
-        "📢 ══════════════════════ 📢\n\n"
-        "🎯 *Para onde você deseja enviar este comunicado?*\n\n"
-        "Escolha abaixo o canal, grupo ou lista de transmissão:"
-    )
-
-    keyboard = []
-
-    # Canal Principal ou botão para vincular se não houver canais
-    if linked_c:
-        main_c = next((c for c in linked_c if c.get("id") == cfg.get("main_channel_id")), linked_c[0])
-        c_title = main_c.get("title", "Canal")[:22]
-        keyboard.append([
-            InlineKeyboardButton(f"📢 Canal Principal: {c_title}", callback_data="cfg:wiz:dest:main_channel")
-        ])
-    else:
-        keyboard.append([
-            InlineKeyboardButton("⚠️ Nenhum Canal Vinculado (Toque para Conectar)", callback_data="cfg:wiz:add_channel")
-        ])
-
-    all_btn_text = f"🌐 Transmitir em TODOS ({len(linked_g)}G + {len(linked_c)}C)" if linked_c else f"🌐 Transmitir em TODOS ({len(linked_g)} Grupos)"
-    keyboard.append([
-        InlineKeyboardButton(f"👥 Todos os Grupos ({len(linked_g)})", callback_data="cfg:wiz:dest:all_groups"),
-        InlineKeyboardButton(f"📢 Todos os Canais ({len(linked_c)})", callback_data="cfg:wiz:dest:all_channels")
-    ])
-    keyboard.append([
-        InlineKeyboardButton(all_btn_text, callback_data="cfg:wiz:dest:all")
-    ])
-
-    chat_rows = []
-    from config import normalize_chat_id
-    for g in linked_g:
-        g_id = normalize_chat_id(g.get("id"))
-        g_title = g.get("title", f"Chat {g_id}")[:24]
-        icon = "📢" if g.get("type") == "channel" else "👥"
-        chat_rows.append([InlineKeyboardButton(f"{icon} {g_title}", callback_data=f"cfg:wiz:dest:grp:{g_id}")])
-    for c in linked_c:
-        c_id = normalize_chat_id(c.get("id"))
-        c_title = c.get("title", f"Canal {c_id}")[:24]
-        chat_rows.append([InlineKeyboardButton(f"📢 {c_title}", callback_data=f"cfg:wiz:dest:chn:{c_id}")])
-
-    if chat_rows:
-        keyboard.extend(chat_rows[:6])
-
-    keyboard.append([
-        InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
-    ])
-
-    return text, InlineKeyboardMarkup(keyboard)
 
 
 def generate_wizard_text_prompt(dest_label: str):
@@ -400,73 +348,7 @@ def generate_wizard_schedule_menu(cfg: dict, state: dict):
     return text, InlineKeyboardMarkup(keyboard)
 
 
-def generate_scheduled_transmissions_menu(cfg: dict):
-    """Gera o menu com a lista de transmissões agendadas pendentes."""
-    sched_list = [x for x in cfg.get("scheduled_transmissions", []) if x.get("status") in ("pending", "sending", "interrupted", "failed")]
-    sched_list.sort(key=lambda x: x.get("schedule_timestamp", 0))
+def generate_scheduled_transmissions_menu(cfg, page=1):
+    from modules.panel_lists import transmissions_page
+    return transmissions_page(cfg, page)
 
-    if not sched_list:
-        text = (
-            "🗓️ ══════════════════════ 🗓️\n"
-            "   *TRANSMISSÕES AGENDADAS*\n"
-            "🗓️ ══════════════════════ 🗓️\n\n"
-            "⚪ *Nenhuma transmissão agendada no momento.*\n\n"
-            "💡 Você pode programar comunicados usando o comando `/comunicado` ou clicando em **Nova Transmissão** no painel!"
-        )
-        keyboard = [
-            [
-                InlineKeyboardButton("📢 Nova Transmissão", callback_data="cfg:wiz:start")
-            ],
-            [
-                InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
-            ]
-        ]
-        return text, InlineKeyboardMarkup(keyboard)
-
-    text = (
-        "🗓️ ══════════════════════ 🗓️\n"
-        "   *TRANSMISSÕES AGENDADAS*\n"
-        "🗓️ ══════════════════════ 🗓️\n\n"
-        f"Encontrei *{len(sched_list)} transmissão(ões) programada(s)*:\n\n"
-    )
-
-    keyboard = []
-    for idx, item in enumerate(sched_list[:5], 1):
-        target = item.get("target", "main_channel")
-        dest_label = get_wizard_dest_label(target, cfg)
-        time_str = item.get("schedule_display", "Horário programado")
-        delay_sec = item.get("delay_seconds", 2)
-        media_type = item.get("media_type")
-        media_label = "🎥 Vídeo" if media_type == "video" else ("🖼️ Foto" if media_type == "photo" else "⚪ Texto")
-        pin_label = "Sim 📌" if item.get("pin") else "Não"
-        preview_text = item.get("text", "")[:45].replace("\n", " ")
-        if len(item.get("text", "")) > 45:
-            preview_text += "..."
-
-        status = item.get("status")
-        if status in ("interrupted", "failed"):
-            text += "⚠️ *Envio interrompido ou com erro.* Confira os destinos antes de reenviar: mensagens podem se repetir.\n"
-        elif status == "sending":
-            text += "🚀 *Transmissão em envio.*\n"
-        text += (
-            f"*{idx}️⃣ Destino:* `{dest_label}`\n"
-            f"• ⏰ *Horário:* `{time_str}`\n"
-            f"• 🌊 *Distribuição:* `{delay_sec}s entre chats`\n"
-            f"• 🖼️ *Mídia:* `{media_label}` | 📌 *Fixar:* `{pin_label}`\n"
-            f"• 📝 _{preview_text}_\n\n"
-        )
-        item_id = item.get("id")
-        if status == "sending":
-            continue
-        action_label = "Reenviar" if status in ("interrupted", "failed") else "Disparar Agora"
-        keyboard.append([
-            InlineKeyboardButton(f"🚀 {action_label} #{idx}", callback_data=f"cfg:sched:fire:{item_id}"),
-            InlineKeyboardButton(f"🗑️ Cancelar #{idx}", callback_data=f"cfg:sched:cancel:{item_id}")
-        ])
-
-    keyboard.append([
-        InlineKeyboardButton("📢 Nova Transmissão", callback_data="cfg:wiz:start"),
-        InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
-    ])
-
-    return text, InlineKeyboardMarkup(keyboard)

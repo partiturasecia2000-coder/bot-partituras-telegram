@@ -53,6 +53,8 @@ class TaskScheduler:
         changed = False
         for item in cfg.get('scheduled_transmissions', []):
             if item.get('status') == 'sending':
+                from modules.transmission_delivery import recover_results
+                recover_results(item)
                 item.update(status='interrupted', interrupted_at=time.time())
                 changed = True
         if changed and not save_config(cfg):
@@ -100,15 +102,21 @@ class TaskScheduler:
         if _active is self:
             _active = None
 
-    def start_transmission(self, item_id, force=False):
+    def start_transmission(self, item_id, force=False, mode="initial"):
         if not self.started or item_id in self.transmissions:
             return False
         cfg = load_config()
         item = next((x for x in cfg.get('scheduled_transmissions', []) if x.get('id') == item_id), None)
-        allowed = ('pending', 'interrupted', 'failed') if force else ('pending',)
+        allowed = ('pending', 'interrupted', 'failed', 'partial', 'completed') if force else ('pending',)
         if not item or item.get('status') not in allowed:
             return False
         if not force and time.time() < item.get('schedule_timestamp', 0):
+            return False
+        from modules.transmission_delivery import prepare_attempt
+        if not prepare_attempt(item, cfg, mode):
+            if mode == 'initial' and item.get('status') == 'pending' and item.get('delivery_results') == []:
+                item.update(status='failed',delivery_note='Nenhum destino encontrado. Confira os chats vinculados antes de criar outro envio.')
+                save_config(cfg)
             return False
         item.update(status='sending', started_at=time.time())
         # Persistir antes de iniciar o envio, sem await entre leitura e reserva.
@@ -116,13 +124,22 @@ class TaskScheduler:
             return False
         task = asyncio.create_task(self._send(dict(item)), name=f'transmission-{item_id}')
         self.transmissions[item_id] = task
-        task.add_done_callback(lambda done: self.transmissions.pop(item_id, None))
+        def finish(done):
+            if self.transmissions.get(item_id) is done:
+                self.transmissions.pop(item_id, None)
+            if not done.cancelled():
+                error = done.exception()
+                if error:
+                    logger.error('Falha ao finalizar a transmissão %s: %s',item_id,type(error).__name__)
+        task.add_done_callback(finish)
         return True
 
     def _mark_transmission(self, item_id, status):
         cfg = load_config()
         for item in cfg.get('scheduled_transmissions', []):
             if item.get('id') == item_id and item.get('status') == 'sending':
+                from modules.transmission_delivery import recover_results
+                recover_results(item)
                 item.update(status=status, interrupted_at=time.time())
                 if not save_config(cfg):
                     logger.error('Não foi possível salvar o estado da transmissão %s.', item_id)
@@ -165,6 +182,6 @@ class TaskScheduler:
                 self.deletions.complete(item)
 
 
-def start_scheduled_transmission(item_id, force=False):
+def start_scheduled_transmission(item_id, force=False, mode="initial"):
     scheduler = active_scheduler()
-    return bool(scheduler and scheduler.start_transmission(item_id, force=force))
+    return bool(scheduler and scheduler.start_transmission(item_id, force=force, mode=mode))

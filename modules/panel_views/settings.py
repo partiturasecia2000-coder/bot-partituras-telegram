@@ -337,46 +337,10 @@ def generate_sub_clean_help():
     return text, InlineKeyboardMarkup(kb)
 
 
-def generate_chats_list_page(cfg: dict):
-    groups = cfg.get("linked_groups", [])
-    channels = cfg.get("linked_channels", [])
-    main_grp = cfg.get("main_group_id")
-    main_ch = cfg.get("main_channel_id")
+def generate_chats_list_page(cfg, page=1):
+    from modules.panel_lists import chats_page
+    return chats_page(cfg, page)
 
-    text = (
-        "🌐 ═══════════════════ 🌐\n"
-        "   *ORQUESTRAÇÃO: GRUPOS E CANAIS*\n"
-        "🌐 ═══════════════════ 🌐\n\n"
-        "Gerencie todas as salas vinculadas ao Maestro Bot em um único lugar!\n\n"
-        f"• 👥 *Grupos Registrados:* `{len(groups)}`\n"
-        f"• 📢 *Canais Registrados:* `{len(channels)}`\n\n"
-        "👉 *Toque em um chat para abrir os detalhes e gerenciar:*"
-    )
-
-    kb = []
-    if groups:
-        kb.append([make_disabled_button("─── 👥 GRUPOS VINCULADOS ───")])
-        for g in groups:
-            gid = g.get("id")
-            gtit = g.get("title", f"Grupo {gid}")
-            if len(gtit) > 22:
-                gtit = gtit[:20] + "…"
-            is_m = " ⭐️ [Principal]" if gid == main_grp else ""
-            kb.append([InlineKeyboardButton(f"👥 {gtit}{is_m}", callback_data=f"cfg:chat:info:grp:{gid}")])
-
-    if channels:
-        kb.append([make_disabled_button("─── 📢 CANAIS VINCULADOS ───")])
-        for c in channels:
-            cid = c.get("id")
-            ctit = c.get("title", f"Canal {cid}")
-            if len(ctit) > 22:
-                ctit = ctit[:20] + "…"
-            is_m = " ⭐️ [Principal]" if cid == main_ch else ""
-            kb.append([InlineKeyboardButton(f"📢 {ctit}{is_m}", callback_data=f"cfg:chat:info:chn:{cid}")])
-
-    kb.append([InlineKeyboardButton("➕ Como Vincular Novo Grupo ou Canal", callback_data="cfg:chats:how_to")])
-    kb.append([InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")])
-    return text, InlineKeyboardMarkup(kb)
 
 
 def generate_sub_chat_info(cfg: dict, chat_type: str, target_id: int | str):
@@ -666,44 +630,10 @@ def generate_sub_cmd_clean(cfg: dict):
     return text, InlineKeyboardMarkup(kb)
 
 
-def generate_auto_responder_list(chat_title: str, cfg: dict):
-    responders = cfg.get("auto_responses", [])
+def generate_auto_responder_list(chat_title, cfg, page=1):
+    from modules.panel_lists import responders_page
+    return responders_page(chat_title, cfg, page)
 
-    text = (
-        "🤖 *RESPOSTAS AUTOMÁTICAS (REGEX & PALAVRAS)*\n"
-        "Configure respostas automáticas personalizadas quando alguém enviar palavras ou frases específicas.\n\n"
-    )
-
-    if not responders:
-        text += "_Nenhuma resposta automática configurada no momento._\n_Clique em '➕ Nova Resposta' abaixo para criar!_"
-    else:
-        text += f"📋 *Respostas Cadastradas ({len(responders)}):*\n"
-        for r in responders:
-            r_id = r.get("id", 1)
-            on = r.get("enabled", True)
-            status_tag = "🟢 Ativo" if on else "🔴 Inativo"
-            mode = "Regex" if r.get("is_regex", True) else "Palavra"
-            title = r.get("title", f"Resposta #{r_id}")
-            pat = r.get("pattern", "")[:35]
-            text += f"\n*{r_id}. {title}* ({status_tag})\n├ *Gatilho [{mode}]:* `{pat}`\n└ *Cooldown:* `{r.get('cooldown_seconds', 30)}s`\n"
-
-    keyboard = [
-        [InlineKeyboardButton("➕ Nova Resposta Automática", callback_data="cfg:resp:add")]
-    ]
-
-    for r in responders:
-        r_id = r.get("id")
-        title = r.get("title", f"Resposta #{r_id}")
-        on_icon = "🟢" if r.get("enabled", True) else "🔴"
-        keyboard.append([
-            InlineKeyboardButton(f"{on_icon} #{r_id} - {title[:28]}", callback_data=f"cfg:resp:detail:{r_id}")
-        ])
-
-    keyboard.append([
-        InlineKeyboardButton("◀ Voltar ao Menu", callback_data="cfg:page:1")
-    ])
-
-    return text, InlineKeyboardMarkup(keyboard)
 
 
 def generate_auto_responder_detail(cfg: dict, item_id: int):
@@ -927,7 +857,7 @@ def generate_sub_youtube(cfg: dict):
 
     if channels:
         lines.append("📋 *Canais Ativos no Monitoramento:*")
-        for i, ch in enumerate(channels, 1):
+        for i, ch in enumerate(channels[:5], 1):
             name = ch.get("name", "Canal")
             handle_or_url = ch.get("input") or ch.get("url") or ""
             lines.append(f"{i}. *{name}* (`{handle_or_url}`)")
@@ -952,24 +882,7 @@ def generate_sub_youtube(cfg: dict):
     return text, InlineKeyboardMarkup(kb)
 
 
-def generate_sub_youtube_delete(cfg: dict):
-    yt_cfg = cfg.get("youtube_notifications", {})
-    channels = yt_cfg.get("channels", [])
+def generate_sub_youtube_delete(cfg, page=1):
+    from modules.panel_lists import youtube_channels
+    return youtube_channels(cfg, page)
 
-    lines = [
-        "🗑️ *REMOVER CANAL DO YOUTUBE*\n",
-        "Selecione o canal que você deseja remover do monitoramento:"
-    ]
-    text = "\n".join(lines)
-
-    kb = []
-    if not channels:
-        lines.append("\n_Nenhum canal para remover._")
-        text = "\n".join(lines)
-    else:
-        for i, ch in enumerate(channels):
-            name = ch.get("name", f"Canal #{i+1}")[:25]
-            kb.append([InlineKeyboardButton(f"❌ Remover: {name}", callback_data=f"cfg:youtube:rm:{i}")])
-
-    kb.append([InlineKeyboardButton("◀ Voltar ao Notificador", callback_data="cfg:sub:youtube")])
-    return text, InlineKeyboardMarkup(kb)

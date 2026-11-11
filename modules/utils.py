@@ -1,3 +1,4 @@
+from telegram.error import BadRequest
 import re
 import time
 import logging
@@ -503,6 +504,8 @@ async def _send_single_smart_message(
                 **extra_kwargs
             )
         except Exception as e_html:
+            if not isinstance(e_html, BadRequest):
+                raise
             if "replied" in str(e_html).lower() or "reply" in str(e_html).lower():
                 extra_kwargs.pop("reply_to_message_id", None)
             if "too long" in str(e_html).lower():
@@ -517,6 +520,8 @@ async def _send_single_smart_message(
             **extra_kwargs
         )
     except Exception as e_md:
+        if not isinstance(e_md, BadRequest):
+            raise
         if "replied" in str(e_md).lower() or "reply" in str(e_md).lower():
             extra_kwargs.pop("reply_to_message_id", None)
         if "too long" in str(e_md).lower():
@@ -531,6 +536,8 @@ async def _send_single_smart_message(
             **extra_kwargs
         )
     except Exception as e_clean:
+        if not isinstance(e_clean, BadRequest):
+            raise
         if "reply_to_message_id" in extra_kwargs:
             extra_kwargs.pop("reply_to_message_id", None)
             return await bot.send_message(
@@ -590,6 +597,8 @@ async def smart_send_message(
             reply_to_message_id=reply_to_message_id
         )
     except Exception as e:
+        if not isinstance(e, BadRequest):
+            raise
         if "too long" in str(e).lower():
             parts = split_long_text(text, max_length=3500)
             last_msg = None
@@ -677,6 +686,8 @@ async def smart_send_photo(
                 **extra_kwargs
             )
         except Exception as e_html:
+            if not isinstance(e_html, BadRequest):
+                raise
             if "replied" in str(e_html).lower() or "reply" in str(e_html).lower():
                 extra_kwargs.pop("reply_to_message_id", None)
             if "too long" in str(e_html).lower():
@@ -693,6 +704,8 @@ async def smart_send_photo(
             **extra_kwargs
         )
     except Exception as e_md:
+        if not isinstance(e_md, BadRequest):
+            raise
         if "replied" in str(e_md).lower() or "reply" in str(e_md).lower():
             extra_kwargs.pop("reply_to_message_id", None)
         if "too long" in str(e_md).lower():
@@ -709,6 +722,8 @@ async def smart_send_photo(
             **extra_kwargs
         )
     except Exception as e_clean:
+        if not isinstance(e_clean, BadRequest):
+            raise
         if "too long" in str(e_clean).lower():
             sent_photo = await bot.send_photo(chat_id=chat_id, photo=photo, **extra_kwargs)
             return await smart_send_message(bot=bot, chat_id=chat_id, text=caption, reply_markup=reply_markup, reply_to_message_id=sent_photo.message_id)
@@ -777,6 +792,8 @@ async def smart_send_video(
                 **extra_kwargs
             )
         except Exception as e_html:
+            if not isinstance(e_html, BadRequest):
+                raise
             if "replied" in str(e_html).lower() or "reply" in str(e_html).lower():
                 extra_kwargs.pop("reply_to_message_id", None)
             if "too long" in str(e_html).lower():
@@ -793,6 +810,8 @@ async def smart_send_video(
             **extra_kwargs
         )
     except Exception as e_md:
+        if not isinstance(e_md, BadRequest):
+            raise
         if "replied" in str(e_md).lower() or "reply" in str(e_md).lower():
             extra_kwargs.pop("reply_to_message_id", None)
         if "too long" in str(e_md).lower():
@@ -809,6 +828,8 @@ async def smart_send_video(
             **extra_kwargs
         )
     except Exception as e_clean:
+        if not isinstance(e_clean, BadRequest):
+            raise
         if "too long" in str(e_clean).lower():
             sent_video = await bot.send_video(chat_id=chat_id, video=video, **extra_kwargs)
             return await smart_send_message(bot=bot, chat_id=chat_id, text=caption, reply_markup=reply_markup, reply_to_message_id=sent_video.message_id)

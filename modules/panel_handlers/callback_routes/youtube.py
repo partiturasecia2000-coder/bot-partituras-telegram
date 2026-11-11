@@ -60,20 +60,8 @@ async def on_cfg_youtube_del(self, update, context, cfg, title):
 
 
 async def on_cfg_youtube_rm(self, update, context, cfg, title):
-    query = update.callback_query
-    chat = update.effective_chat
-    user = update.effective_user
-    data = query.data
-    await query.answer()
-    idx_str = data.split(":")[-1]
-    success, msg = remove_youtube_channel(cfg, idx_str)
-    cfg = load_config()
-    text, markup = generate_sub_youtube_delete(cfg)
-    try:
-        await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-    except Exception:
-        pass
-    return
+    from modules.confirmations import confirm_panel_action
+    await confirm_panel_action(self, update, context)
 
 
 async def on_cfg_youtube_target(self, update, context, cfg, title):
