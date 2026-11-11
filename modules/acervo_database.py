@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 import re
 import html
@@ -261,8 +262,19 @@ class AcervoDatabase:
                 return conn
             raise
 
+    @contextmanager
+    def _connection(self):
+        """Finaliza a transação e libera o descritor mesmo quando há falha."""
+        connection = self._get_connection()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+
     def _init_db(self):
-        with self._get_connection() as conn:
+        with self._connection() as conn:
             conn.execute("""
             CREATE TABLE IF NOT EXISTS acervo (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -333,7 +345,7 @@ class AcervoDatabase:
                     post_url = f"https://t.me/c/{num}/{message_id}"
 
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 conn.execute("""
                 INSERT INTO acervo (
                     file_id, file_unique_id, file_name, title, clean_title,
@@ -367,7 +379,7 @@ class AcervoDatabase:
             return 0
         inserted_or_updated = 0
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 for item in items:
                     channel_id = normalize_chat_id(item.get("channel_id", 0))
                     file_name = item.get("file_name", "")
@@ -425,7 +437,7 @@ class AcervoDatabase:
                 self._heal_db()
                 self._init_db()
                 try:
-                    with self._get_connection() as conn:
+                    with self._connection() as conn:
                         retry_count = 0
                         for item in items:
                             channel_id = normalize_chat_id(item.get("channel_id", 0))
@@ -490,7 +502,7 @@ class AcervoDatabase:
         raw_tokens = [t for t in q_clean.split() if len(t) >= 1]
 
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 if not raw_tokens:
                     cursor = conn.execute("""
                     SELECT id, file_id, file_name, title, file_type, file_size_str,
@@ -622,7 +634,7 @@ class AcervoDatabase:
     def get_item(self, item_id: int) -> dict:
         """Obtém os detalhes de um item específico do acervo pelo ID."""
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute("""
                     SELECT id, channel_id, channel_title, message_id, file_id, file_unique_id, 
@@ -639,7 +651,7 @@ class AcervoDatabase:
     def get_channels_summary(self) -> list:
         """Retorna resumo de todos os canais que possuem partituras no acervo."""
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute("""
                     SELECT channel_id, channel_title, channel_username, COUNT(*) as qtd
@@ -656,7 +668,7 @@ class AcervoDatabase:
     def get_stats(self) -> dict:
         """Retorna estatísticas gerais do acervo global."""
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 total_files = conn.execute("SELECT COUNT(*) FROM acervo;").fetchone()[0]
                 total_channels = conn.execute("SELECT COUNT(DISTINCT channel_id) FROM acervo;").fetchone()[0]
                 by_type = conn.execute("SELECT file_type, COUNT(*) FROM acervo GROUP BY file_type;").fetchall()
@@ -683,7 +695,7 @@ class AcervoDatabase:
 
     def update_scan_progress(self, channel_id: int, channel_title: str, last_scanned_id: int, total_found: int):
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 conn.execute("""
                 INSERT INTO varredura_progresso (channel_id, channel_title, last_scanned_id, total_found, updated_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -700,7 +712,7 @@ class AcervoDatabase:
         """Remove todos os itens de um canal específico."""
         try:
             cid = normalize_chat_id(channel_id)
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 res = conn.execute("DELETE FROM acervo WHERE channel_id = ?;", (cid,))
                 conn.commit()
                 return res.rowcount
@@ -711,7 +723,7 @@ class AcervoDatabase:
     def clear_all(self) -> int:
         """Remove todos os itens do acervo de forma limpa."""
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 res = conn.execute("DELETE FROM acervo;")
                 conn.execute("DELETE FROM varredura_progresso;")
                 conn.commit()
@@ -729,7 +741,7 @@ class AcervoDatabase:
         """
         deleted_count = 0
         try:
-            with self._get_connection() as conn:
+            with self._connection() as conn:
                 # Mensagens de texto erroneamente importadas possuem file_id iniciado por 'link_' e tamanho 0
                 cursor = conn.execute("""
                     SELECT id, title, file_name, caption

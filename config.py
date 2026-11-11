@@ -1,4 +1,8 @@
 import os
+import copy
+from functools import wraps
+from threading import RLock
+from modules.storage import read_json_object, write_json_atomic
 import re
 import json
 import logging
@@ -198,41 +202,50 @@ DEFAULT_CONFIG = {
     }
 }
 
+_CONFIG_LOCK = RLock()
+
+
+class ConfigRecoveryError(RuntimeError):
+    """Impede substituir configurações ilegíveis por valores padrão."""
+
+
+def _serialized_config_operation(function):
+    @wraps(function)
+    def locked(*args, **kwargs):
+        with _CONFIG_LOCK:
+            return function(*args, **kwargs)
+    return locked
+
+
+@_serialized_config_operation
 def load_config() -> dict:
-    config = dict(DEFAULT_CONFIG)
+    config = copy.deepcopy(DEFAULT_CONFIG)
     bak_path = BASE_DIR / ".config_backup.json"
-    if CONFIG_PATH.exists():
+    user_cfg = None
+    for candidate in (CONFIG_PATH, bak_path):
+        if not candidate.exists():
+            continue
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                user_cfg = json.load(f)
-                # Mescla configurações preservando campos
-                for k, v in user_cfg.items():
-                    if isinstance(v, dict) and k in config and isinstance(config[k], dict):
-                        config[k].update(v)
-                    else:
-                        config[k] = v
-                # Se o config tiver dados reais salvos, atualiza o backup de segurança
-                if user_cfg.get("main_group_id") or user_cfg.get("recurring_messages"):
-                    try:
-                        with open(bak_path, "w", encoding="utf-8") as fb:
-                            json.dump(user_cfg, fb, ensure_ascii=False, indent=2)
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.error(f"Erro ao ler config.json: {e}. Usando configuração padrão.")
-    elif bak_path.exists():
-        try:
-            with open(bak_path, "r", encoding="utf-8") as fb:
-                user_cfg = json.load(fb)
-                for k, v in user_cfg.items():
-                    if isinstance(v, dict) and k in config and isinstance(config[k], dict):
-                        config[k].update(v)
-                    else:
-                        config[k] = v
-            save_config(config)
-            logger.info("config.json restaurado automaticamente do backup de segurança!")
-        except Exception:
-            pass
+            user_cfg = read_json_object(candidate)
+        except (OSError, ValueError):
+            logger.warning("Arquivo de configuração ilegível: %s", candidate.name)
+            continue
+        if candidate == bak_path:
+            write_json_atomic(CONFIG_PATH, user_cfg)
+            logger.warning("Configuração restaurada do backup de segurança.")
+        break
+    if user_cfg is None and (CONFIG_PATH.exists() or bak_path.exists()):
+        raise ConfigRecoveryError(
+            "Configuração e backup ilegíveis; arquivos preservados para recuperação."
+        )
+    if user_cfg is not None:
+        for key, value in user_cfg.items():
+            if isinstance(value, dict) and isinstance(config.get(key), dict):
+                config[key].update(value)
+            else:
+                config[key] = value
+
+    cfg_modified = False
 
     # Garante migração automática caso main_group_id ou main_channel_id existam
     if config.get("main_group_id"):
@@ -275,7 +288,6 @@ def load_config() -> dict:
         cfg_modified = True
 
     # Normalização automática e desduplicação de IDs de supergrupos/canais salvos no config
-    cfg_modified = False
 
     seen_groups = set()
     deduped_groups = []
@@ -421,22 +433,19 @@ def get_bot_token() -> str:
 
     return ""
 
+@_serialized_config_operation
 def save_config(config: dict) -> bool:
-    """Salva as configurações alteradas no arquivo config.json e cria cópia de segurança."""
+    """Substitui arquivos completos, mantendo o contrato booleano anterior."""
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        # Salva cópia de segurança oculta
-        bak_path = BASE_DIR / ".config_backup.json"
-        try:
-            with open(bak_path, "w", encoding="utf-8") as fb:
-                json.dump(config, fb, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-        return True
-    except Exception as e:
-        logger.error(f"Erro ao salvar config.json: {e}")
+        write_json_atomic(CONFIG_PATH, config)
+    except (OSError, ValueError, TypeError):
+        logger.exception("Falha ao salvar configuração; arquivo anterior preservado.")
         return False
+    try:
+        write_json_atomic(BASE_DIR / ".config_backup.json", config)
+    except (OSError, ValueError, TypeError):
+        logger.warning("Configuração salva, mas não foi possível atualizar o backup.")
+    return True
 
 # =====================================================================
 # AUXILIARES DE FUSO HORÁRIO

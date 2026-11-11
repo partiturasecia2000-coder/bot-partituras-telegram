@@ -328,6 +328,8 @@ def main():
 
         # Se for mensagem no chat privado com o bot e não for comando:
         if chat and chat.type == "private":
+            if not user or not await admin_cache.is_admin(chat, user.id):
+                return
             msg = update.effective_message
             fwd_chat = None
             if msg:

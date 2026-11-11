@@ -323,9 +323,9 @@ class AdminCache:
         if not chat or not user_id:
             return False
 
-        # Mensagens privadas sempre tratadas como livres de restrições de grupo
         if chat.type == "private":
-            return True
+            from modules.access import can_manage_private_chat
+            return await can_manage_private_chat(chat, user_id)
 
         now = time.time()
         key = (chat.id, user_id)

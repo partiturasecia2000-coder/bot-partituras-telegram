@@ -1,36 +1,36 @@
-# Relatório de organização e refatoração
+# Melhorias do bot Telegram — versão 2
 
-## Auditoria
+Fonte: `D:\Movidos\Desktop\Projeto Telegram\bot_discloud_refatorado.zip` (44 arquivos). O ZIP original permaneceu intacto; o trabalho foi feito em uma cópia.
 
-O projeto já separava recursos em `modules/`, mas `panel.py` concentrava 6.110 linhas: telas, estado persistente, assistente de transmissão, entradas e callbacks. `inline_acervo.py` misturava SQLite, busca e atendimento Telegram; `main.py` também implementava o servidor HTTP de disponibilidade.
+## Alterações entregues
 
-## Alterações
+- O método de callbacks, antes com mais de 2.200 linhas, virou um despachante curto. As 161 ações foram extraídas para funções agrupadas em navegação, moderação, recorrência, transmissão, respostas, chats, YouTube e backup.
+- Os 27 fluxos de entrada foram divididos em configurações, recorrência, respostas, transmissão e integrações. A ordem das condições foi mantida, com uma correção intencional: a edição de tempo personalizado das boas-vindas agora alcança sua rotina específica.
+- Foram centralizadas as dependências repetidas dos comportamentos do painel. As interfaces de importação e o ponto de entrada continuam disponíveis.
+- A configuração agora usa cópia profunda dos padrões, evitando que uma carga altere os padrões globais por referência. Foi corrigida a reinicialização indevida do indicador de migração antes de salvar.
+- JSON é gravado em arquivo temporário, sincronizado e substituído atomicamente. Uma falha antes da substituição mantém o arquivo anterior. O backup também usa essa escrita. O JSON principal inválido pode ser recuperado pelo backup; ambos inválidos geram erro e permanecem preservados.
+- As transações SQLite agora encerram as conexões em sucesso e em falha, além de confirmar ou reverter as operações.
+- Foi corrigido o acesso administrativo irrestrito no privado. O bot verifica administração em chats vinculados, ou usa `BOT_ADMIN_IDS`/`panel_admin_ids` quando configurados. Entradas pendentes revalidam permissão, e comandos administrativos do acervo passaram a exigir autorização. Busca inline pública preservada.
+- Corrigido um import ausente de `html` no fluxo que salva links de entrada de canais.
+- Dependências diretas e transitivas foram fixadas nas versões utilizadas nos testes. O arquivo aberto recebido foi preservado em `requirements.in`.
+- Incluídos 19 testes automatizados e o guia `ATUALIZACAO.md`.
 
-- `modules/panel_views/`: utilitários, configurações, recorrência e telas de transmissão.
-- `modules/panel_handlers/`: estado persistente, transmissão, processamento de entradas e callbacks. `modules/panel.py` continua exportando `InteractivePanelHandler` e as funções públicas anteriores.
-- `modules/acervo_database.py`: banco SQLite, normalização, indexação e instância compartilhada; `inline_acervo.py` mantém os fluxos Telegram e a compatibilidade dos imports anteriores.
-- `modules/healthcheck.py`: monitoramento HTTP, preservando a condição que impede abrir portas no Discloud.
-- `tests/check_regression.py`: verificações offline, usando configuração e banco temporários.
+## Evidências de validação
 
-As rotinas foram realocadas preservando seus corpos e assinaturas. Não houve alteração intencional de comandos, permissões, callbacks, jobs, textos ou regras do bot. Os grandes métodos de callbacks e entradas permanecem internamente extensos; subdividi-los exige testes de conversa mais abrangentes para reduzir o risco de regressão.
+- Compilação de todos os arquivos Python: aprovada.
+- 19 testes automatizados: aprovados em Python 3.14.3 com python-telegram-bot 22.8 e APScheduler 3.11.3.
+- Testes cobrem falha de substituição do JSON, preservação dos arquivos, recuperação de backup, recusa de dados ilegíveis, isolamento dos padrões, fechamento de SQLite e rollback, permissões, cancelamento, edição do tempo de boas-vindas e alteração de moderação.
+- Inicialização offline registrou os comandos/handlers e os três jobs periódicos, sem polling nem chamadas reais ao Telegram.
+- Checagem anterior de menus, persistência, SQLite e durações: aprovada.
+- Comparação com a versão recebida: 52 funções de menus/seletores produziram saídas equivalentes com dados e relógio controlados.
+- Comparação estrutural confirmou que os corpos das 188 rotas extraídas foram mantidos. A correção da precedência do tempo de boas-vindas fica na tabela de rotas.
+- Valores de `DEFAULT_CONFIG`, configuração de exemplo, `discloud.config`, `Procfile` e mídias foram preservados. Nenhuma credencial foi removida ou divulgada.
+- Pacote final verificado quanto à integridade, sintaxe e presença dos arquivos de origem. Arquivos temporários, dependências locais e bancos de teste não entram no ZIP.
 
-## Preservação e deploy
+## Deploy e limites
 
-Todos os 30 arquivos do ZIP original estão presentes. Os 27 arquivos não refatorados foram comparados byte a byte, incluindo `discloud.config`, `Procfile`, `requirements.txt`, `config.py`, configuração de exemplo, documentação e mídias. Nenhuma credencial existente foi removida ou substituída; seus valores não são reproduzidos neste relatório. O ZIP recebido não incluía `.env`, `config.json` nem banco SQLite de produção. Mantenha esses dados já existentes na hospedagem ao atualizar o código.
+O deploy continua usando `MAIN=main.py`, `TYPE=bot`, RAM e reinício automático originais. Atualize todos os arquivos de código e preserve os dados reais do Discloud: `.env`, `config.json`, `.config_backup.json` e banco SQLite não vieram no ZIP recebido.
 
-O pacote abre diretamente na raiz do projeto, com `MAIN=main.py`, `TYPE=bot`, RAM e reinício automático preservados. Não é necessário alterar o ponto de entrada. Atualize também os novos diretórios junto com os arquivos modificados.
+O controle de acesso no privado mudou intencionalmente. Antes da atualização, confira se seu usuário é administrador de um chat vinculado acessível ao bot; ou configure uma lista explícita com seu ID numérico. O guia explica os dois caminhos. A política de grupos continua baseada na administração do grupo atual.
 
-## Validação realizada
-
-- Compilação de todos os arquivos Python: aprovada em Python 3.14.3.
-- Comparação estrutural: 350 corpos de funções/métodos originais preservados.
-- Comparação entre original e refatorado: 52 funções de menus/seletores com saídas equivalentes, usando configuração padrão e relógio fixo.
-- Importação de `main` e dependências: aprovada com python-telegram-bot 22.6 disponível no ambiente.
-- Persistência de entradas pendentes: gravação e remoção aprovadas em configuração temporária.
-- SQLite: criação, inserção, atualização sem duplicação, busca e exclusão aprovadas em banco temporário.
-- Conversão de durações: exemplos válidos, desativação e limites aprovados.
-- ZIP final: integridade e presença dos arquivos verificadas.
-
-Para repetir a checagem offline após instalar as dependências: `python tests/check_regression.py`.
-
-Limites: não foram executados polling, envio real, integração com YouTube, todos os diálogos de administração nem deploy no Discloud. A instalação completa de `requirements.txt` não foi possível neste ambiente; APScheduler, python-dotenv e pytz não estavam disponíveis. Portanto, execução dos jobs e inicialização completa com todas as dependências exigem validação na hospedagem. As versões abertas (`>=`) do arquivo original foram preservadas; fixá-las após homologação tornará futuros deploys mais previsíveis.
+Não houve deploy nem teste conectado ao Telegram, ao YouTube ou ao Discloud. Os testes não cobrem todas as combinações de conversas, respostas externas e entrega de agendamentos. A validação foi local/offline em Windows; o comportamento real da hospedagem precisa de conferência após a atualização. A gravação atômica e o bloqueio local não evitam conflitos entre múltiplas instâncias ou entre operações independentes de leitura e gravação. A verificação de acesso entregue não é uma auditoria completa de segurança de todos os módulos.

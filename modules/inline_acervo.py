@@ -262,6 +262,9 @@ async def handle_private_document(update: Update, context: ContextTypes.DEFAULT_
     Garante que arquivos .json de importação ou arquivos de partituras (.pdf, áudios)
     nunca sejam ignorados ou bloqueados por outros módulos.
     """
+    from modules.access import require_management_access
+    if not await require_management_access(update):
+        return
     msg = update.effective_message
     if not msg or not msg.document:
         return
@@ -373,6 +376,9 @@ async def handle_private_document(update: Update, context: ContextTypes.DEFAULT_
 
 async def cmd_limpar_acervo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando administrativo para zerar o banco do acervo de partituras."""
+    from modules.access import require_management_access
+    if not await require_management_access(update):
+        return
     msg = update.effective_message
     if not msg:
         return
@@ -387,6 +393,9 @@ async def cmd_limpar_acervo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_limpar_textos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando administrativo para varrer e remover mensagens de bate-papo/perguntas do acervo."""
+    from modules.access import require_management_access
+    if not await require_management_access(update):
+        return
     msg = update.effective_message
     if not msg:
         return
@@ -1155,6 +1164,9 @@ def generate_acervo_dashboard_text_and_kb():
 
 async def cmd_acervo_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Exibe painel administrativo do Acervo Global de Partituras."""
+    from modules.access import require_management_access
+    if not await require_management_access(update):
+        return
     msg = update.effective_message
     text, markup = generate_acervo_dashboard_text_and_kb()
     await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1162,6 +1174,9 @@ async def cmd_acervo_dashboard(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Controlador de botões interativos do Acervo."""
+    from modules.access import require_management_access
+    if not await require_management_access(update):
+        return
     query = update.callback_query
     if not query:
         return

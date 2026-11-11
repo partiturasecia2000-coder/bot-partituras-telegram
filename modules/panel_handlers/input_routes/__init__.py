@@ -1,0 +1,32 @@
+"""Rotas de edição, conservando a ordem das condições anteriores."""
+from . import integrations, settings, recurring, responders, broadcast
+
+INPUT_ROUTES = (
+    (lambda action: action == 'youtube_add', integrations.on_youtube_add),
+    (lambda action: action == 'backup_channel', integrations.on_backup_channel),
+    (lambda action: action == 'youtube_target', integrations.on_youtube_target),
+    (lambda action: action == 'acervo:set_channel_link', integrations.on_acervo_set_channel_link),
+    (lambda action: action.startswith('welcome_') and action != 'welcome_autodel_time', settings.on_welcome),
+    (lambda action: action == 'rec_text', recurring.on_rec_text),
+    (lambda action: action == 'rec_photo', recurring.on_rec_photo),
+    (lambda action: action == 'rec_buttons', recurring.on_rec_buttons),
+    (lambda action: action == 'rec_title', recurring.on_rec_title),
+    (lambda action: action == 'rec_article', recurring.on_rec_article),
+    (lambda action: action == 'rec_msg_cnt', recurring.on_rec_msg_cnt),
+    (lambda action: action in ('rec_dstart', 'rec_dend'), recurring.on_rec_dstart),
+    (lambda action: action == 'banned_add', settings.on_banned_add),
+    (lambda action: action == 'banned_remove', settings.on_banned_remove),
+    (lambda action: action == 'resp_edit_text', responders.on_resp_edit_text),
+    (lambda action: action == 'resp_edit_pattern', responders.on_resp_edit_pattern),
+    (lambda action: action == 'resp_edit_title', responders.on_resp_edit_title),
+    (lambda action: action == 'resp_edit_photo', responders.on_resp_edit_photo),
+    (lambda action: action == 'resp_edit_buttons', responders.on_resp_edit_buttons),
+    (lambda action: action == 'logs_set_id', settings.on_logs_set_id),
+    (lambda action: action == 'welcome_autodel_time', settings.on_welcome_autodel_time),
+    (lambda action: action == 'custom_timezone', settings.on_custom_timezone),
+    (lambda action: action == 'wiz_text', broadcast.on_wiz_text),
+    (lambda action: action == 'wiz_media', broadcast.on_wiz_media),
+    (lambda action: action == 'wiz_buttons', broadcast.on_wiz_buttons),
+    (lambda action: action == 'wiz_sched_custom', broadcast.on_wiz_sched_custom),
+    (lambda action: action == 'wiz_link_channel', broadcast.on_wiz_link_channel),
+)
