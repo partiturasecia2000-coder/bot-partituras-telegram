@@ -40,46 +40,15 @@ PRESET_DOMAINS = {
 
 
 def get_conversation_reply_keyboard() -> ReplyKeyboardMarkup:
-    """
-    Retorna o menu em botões na área de conversa (Reply Keyboard persistente).
-    Permite acesso rápido às principais funções do bot diretamente no teclado.
-    """
-    keyboard = [
-        [KeyboardButton("🎛️ Painel de Controle"), KeyboardButton("🎼 Acervo de Partituras")],
-        [KeyboardButton("📢 Meus Canais"), KeyboardButton("👥 Meus Grupos")],
-        [KeyboardButton("🛡️ Whitelist & Links"), KeyboardButton("❓ Ajuda & Comandos")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
+    from modules.menu_shortcuts import conversation_keyboard
+    return conversation_keyboard()
+
 
 
 def generate_whitelist_hub(cfg: dict):
-    """Gera o menu central de Whitelist (Usuários Livres + Links Permitidos)."""
-    w_users = get_whitelist_users(cfg)
-    a_domains = get_allowed_domains(cfg)
+    from modules.menu_screens import allowed_menu
+    return allowed_menu(cfg)
 
-    has_gdrive = any("drive.google.com" in d.lower() for d in a_domains)
-
-    text = (
-        "🛡️ <b>CENTRAL DE LISTAS BRANCAS (WHITELIST)</b>\n\n"
-        "Aqui você define quem e quais links têm permissão total no grupo, "
-        "sem sofrer nenhum bloqueio de antispam, anti-flood ou repetição.\n\n"
-        f"👤 <b>Usuários Livres (Isentos):</b> <code>{len(w_users)}</code> cadastrado(s)\n"
-        "<i>Membros que podem enviar links, mensagens repetidas e mídias livremente.</i>\n\n"
-        f"🌐 <b>Links Permitidos (Domínios):</b> <code>{len(a_domains)}</code> liberado(s)\n"
-        f"<i>Status do Google Drive: {'🟢 Liberado' if has_gdrive else '🔴 Bloqueado'}</i>\n\n"
-        "Selecione uma área abaixo para gerenciar:"
-    )
-
-    kb = [
-        [
-            InlineKeyboardButton(f"👤 Usuários Livres ({len(w_users)})", callback_data="cfg:sub:whitelist_users"),
-            InlineKeyboardButton(f"🌐 Links Permitidos ({len(a_domains)})", callback_data="cfg:sub:allowed_links")
-        ],
-        [
-            InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")
-        ]
-    ]
-    return text, InlineKeyboardMarkup(kb)
 
 
 def generate_whitelist_users_page(cfg: dict, page: int = 1):

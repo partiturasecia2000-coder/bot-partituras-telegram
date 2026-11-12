@@ -1,38 +1,37 @@
-# Versão 5 — restauração, histórico único e prévia completa
+# Versão 6 — menu mais legível
 
-Base: `bot_discloud_transmissoes_painel_v4.zip`. As versões anteriores foram preservadas. Não houve deploy, envio real ou restauração de dados da hospedagem.
+Base: `bot_discloud_backup_previa_v5.zip`. O pacote anterior permaneceu intacto. A alteração foi feita em uma cópia; não houve deploy nem mensagens reais no Telegram.
 
-## Entregas
+## Alterações
 
-**Restauração pelo painel.** Sistema → Backup → Restaurar backup recebe um ZIP no privado do administrador. O arquivo é validado antes de aparecer a confirmação: conteúdo permitido, limites de tamanho, JSON, estrutura e integridade dos bancos SQLite. Arquivos de aplicação, `.env`, caminhos externos, nomes duplicados, links e estruturas incompatíveis são recusados.
+- Painel inicial com categorias em linhas inteiras e atalhos diretos para nova postagem e histórico. Rótulos mais curtos reduzem o corte de texto no celular.
+- Estados escritos como **Ativado/Desativado**, sem depender apenas de pontos coloridos. Os botões indicam a ação que será aplicada, como “Ativar antispam”.
+- Cabeçalhos, resumos e espaçamento revisados em limpeza, segurança, boas-vindas, mensagens, sistema, backups, acervo, permissões, modo noturno, registros e horário. Foram removidas divisórias decorativas extensas e afirmações de funcionamento que não eram verificadas.
+- Contagem de recorrências e respostas diferencia itens ativos do total cadastrado.
+- Navegação padronizada com **Voltar**, **Início** e fechamento claro do painel. A ajuda informa corretamente prévia, confirmação e restauração, em vez de prometer ações instantâneas.
+- Personalização de boas-vindas com botões largos e estados claros; lista de grupos agora paginada.
+- Teclado do `/menu` com oito atalhos curtos: painel, partituras, postagem, histórico, canais, grupos, pessoas/links e ajuda.
+- Corrigido o encaminhamento dos botões fixos: cada atalho abre a área correspondente, em vez de cair no recebimento de uma postagem. Os seis textos do teclado anterior continuam aceitos. Permissões são verificadas antes de abrir as áreas administrativas.
+- Atalhos de canais e grupos abrem listas separadas; a paginação mantém o filtro selecionado.
+- Descrições curtas no menu de comandos do Telegram e acesso visível aos recursos existentes de histórico, tarefas, backup e restauração.
 
-A prévia mostra arquivos, quantidade de partituras, exclusões, chats e programações. A confirmação é vinculada ao administrador, conversa e mensagem, expira em cinco minutos e só pode ser usada uma vez. A permissão é conferida novamente na confirmação.
+## Prévia visual
 
-Antes da substituição, o bot pausa o agendador e tarefas de importação/respostas atrasadas e cria um ZIP do estado atual em `backups/`. A troca tem diário de reversão. Uma falha durante a aplicação tenta recompor o estado anterior; se houver interrupção do processo, a recuperação é executada ao importar a configuração, antes de inicializar o banco do acervo. Se a reversão não puder terminar, o bot bloqueia novas operações até reiniciar/recuperar. Gravações antigas de configuração são rejeitadas após uma restauração.
+`PREVIA_MENU_V6.html` é uma demonstração local com 17 telas, comparação com o painel anterior e alternância claro/escuro. Usa dados fictícios, não conecta ao Telegram e não executa as ações do bot. As telas e botões foram gerados pelas funções do menu novo.
 
-O token e o ambiente atuais não são substituídos. IDs administrativos explícitos atuais são mantidos e o responsável pela restauração permanece autorizado; IDs vindos do arquivo não são ativados. Os destinos atuais dos backups e logs também são preservados. Recorrências, transmissões antigas, YouTube, exclusões restauradas e backups automáticos ficam pausados ou marcados para revisão, evitando executar tarefas antigas involuntariamente. A tela informa essa política antes da confirmação.
+A aparência exata, a fonte e o tamanho do texto seguem o aplicativo Telegram e as preferências de cada pessoa. A repaginação melhora o conteúdo, a largura dos botões e a organização; a prévia HTML é ilustrativa, não uma captura do Telegram.
 
-O comando `/restaurar` antigo passa pela mesma validação e prévia, incluindo arquivos JSON/DB de versões anteriores. `/backup` agora gera o ZIP completo e só permite download por administrador no privado, em vez de publicar configurações no grupo. Foi corrigida a liberação irrestrita de usuários privados na verificação administrativa dessa classe de comandos.
+## Validação
 
-**Histórico único.** `/falar`, `/anunciar` e `/canal`, com seus aliases, usam o mesmo motor do `/comunicado`: resultados por destino, confirmação das partes, falhas categorizadas e repetição apenas dos destinos elegíveis. Foram mantidos seleção por ID/número/username, grupos/canais, tópicos, fixação, botões e cópia de postagem. O motor passou a aceitar também documento/PDF, áudio e voz, além de texto, foto e vídeo. Comandos em legendas são tratados antes da importação de documentos do acervo.
+- **149 testes automatizados aprovados**: 135 anteriores e 14 de apresentação/navegação.
+- Verificados: rotas originais das categorias, estados por escrito, configurações intactas ao renderizar, contadores corretos, nomes com caracteres especiais, limites dos rótulos, acesso a todos os grupos de boas-vindas, filtros da paginação e atalhos novos/antigos.
+- Testado também o bloqueio de atalhos para usuário sem autorização.
+- Checagem de 52 funções de menus/importações/persistência/SQLite/durações aprovada.
+- Compilação e referências globais verificadas. JavaScript da prévia validado e as 17 telas exercitadas em um ambiente de DOM simulado, sem rede.
+- Integridade e conteúdo do ZIP final conferidos. Arquivos de deploy, configuração, dependências, tokens e mídias preservados.
 
-**Prévia completa obrigatória.** Os comandos e o assistente, em envio imediato ou agendado, criam uma prévia que não dispara a postagem. Ela reúne conteúdo legível, tipo de mídia, todos os destinos, horário, distribuição, botões, tópico e fixação. Textos e destinos longos são paginados. “Ver conteúdo no privado” mostra a postagem formatada somente ao autor; não publica a amostra no grupo de destino. Apenas “Confirmar envio/agendamento” libera o registro para o agendador. Prévia expirada, conteúdo alterado, perda de acesso, mensagem de confirmação diferente e clique repetido não iniciam novo envio. Um horário vencido durante a prévia exige preparar outro agendamento.
+Testes locais/offline em Windows e Python 3.14.3. Não houve teste visual no aplicativo Telegram real. As confirmações, prévias de envio, controle de acesso, histórico, restauração e agendador continuam com as regras da versão 5.
 
-## Verificação
+## Aplicar
 
-- **135 testes automatizados aprovados**, incluindo 77 testes da versão anterior e 58 novos cenários de restauração/comandos.
-- Validação de ZIP/JSON/SQLite, rejeição de caminhos e arquivos indevidos, confirmação, autorização, cópia anterior, reversão de troca parcial, recuperação no início do processo e recusa de gravações antigas.
-- Mídias, tópicos, cópia de post, fixação, histórico comum, prévia obrigatória, clique duplicado, destinos removidos, horários vencidos e amostra privada de comandos feitos no grupo.
-- Roteamento das legendas conferido com objetos reais do SDK, sem chamadas externas.
-- Checagem anterior de 52 funções de menus/importações/persistência/SQLite/durações, compilação e verificação de referências globais dos módulos alterados aprovadas.
-- Pacote final conferido quanto a integridade, presença dos arquivos e preservação de deploy, mídias, dependências e valores originais de configuração/token.
-
-Testes locais em Windows, Python 3.14.3, com as dependências fixadas existentes e chamadas de rede simuladas. A validação conectada ao Telegram e ao Discloud continua pendente.
-
-## Uso e limites
-
-Atualize o ZIP completo e preserve `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db`, `agendamentos.db` e a pasta `backups/` da hospedagem. Se existir um diário de restauração interrompida, preserve também `.restore_journal.json` e `.restore-transactions/` até concluir a recuperação.
-
-Os comandos de postagem agora pedem confirmação em vez de enviar imediatamente. A prévia expira em 30 minutos; a restauração tem limite de upload de 20 MB e conteúdo descompactado de 128 MB. É necessário espaço livre para a cópia anterior e a reversão. As cópias anteriores ficam no servidor e são oferecidas ao responsável para download no privado por uma hora.
-
-Restaurar um backup não desfaz mensagens já entregues no Telegram. Tarefas antigas são mantidas para conferência, e exclusões restauradas não são reativadas em lote nesta versão; novas exclusões continuam funcionando. Backups automáticos, YouTube e recorrências podem ser reativados pelos controles já existentes após revisão. Envios sem confirmação continuam fora das novas tentativas, pois não há garantia de entrega exatamente uma vez entre uma resposta de rede e a gravação local. Mantenha uma única instância por token/conjunto de dados.
+Atualize com o ZIP completo e reinicie o bot. Preserve os arquivos de dados da hospedagem e as pastas de backup/recuperação já existentes. Depois abra `/painel` e use `/menu` para atualizar os botões fixos na conversa. Os botões antigos continuam funcionando enquanto o teclado não for renovado.

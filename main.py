@@ -555,11 +555,9 @@ def main():
             return
 
         # Limpeza defensiva: se algum membro enviar texto de botão de menu no grupo, apaga e remove o teclado
-        MENU_BUTTON_TEXTS = {
-            "🎛️ Painel de Controle", "🎼 Acervo de Partituras",
-            "📢 Meus Canais", "👥 Meus Grupos",
-            "🛡️ Whitelist & Links", "❓ Ajuda & Comandos"
-        }
+        from modules.menu_shortcuts import SHORTCUTS
+        MENU_BUTTON_TEXTS=set(SHORTCUTS)
+
         msg = update.effective_message
         if msg and msg.text in MENU_BUTTON_TEXTS:
             from telegram import ReplyKeyboardRemove
@@ -652,14 +650,19 @@ def main():
         try:
             from telegram import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats, BotCommandScopeDefault
             private_commands = [
-                BotCommand("painel", "Abrir Painel de Controle Principal"),
-                BotCommand("menu", "Menu de Botões na Área de Conversa"),
-                BotCommand("acervo", "Acervo Global de Partituras"),
-                BotCommand("whitelist", "Usuários Livres e Links Permitidos"),
-                BotCommand("canais", "Ver Canais Vinculados"),
-                BotCommand("grupos", "Ver Grupos Vinculados"),
-                BotCommand("status", "Status e Proteções do Grupo"),
-                BotCommand("ajuda", "Guia Completo de Comandos")
+                BotCommand("painel", "Painel de controle"),
+                BotCommand("menu", "Atalhos na conversa"),
+                BotCommand("acervo", "Partituras e busca"),
+                BotCommand("whitelist", "Pessoas e links liberados"),
+                BotCommand("canais", "Canais vinculados"),
+                BotCommand("grupos", "Grupos vinculados"),
+                BotCommand("status", "Configurações e proteção"),
+                BotCommand("ajuda", "Ajuda e comandos"),
+                BotCommand("comunicado","Nova postagem com prévia"),
+                BotCommand("agendados","Histórico e resultados"),
+                BotCommand("tarefas","Rotinas automáticas"),
+                BotCommand("backup","Baixar backup no privado"),
+                BotCommand("restaurar","Restaurar com confirmação")
             ]
             # Exclusivo no chat privado!
             await application.bot.set_my_commands(private_commands, scope=BotCommandScopeAllPrivateChats())
@@ -871,6 +874,26 @@ def main():
         await update.effective_message.reply_text("\n".join(lines))
 
     app.add_handler(CommandHandler("tarefas", cmd_tarefas))
+
+    from modules.menu_shortcuts import SHORTCUTS
+    async def reply_linked_chats(update,context):
+        from modules.panel_lists import chats_page
+        kind='channels' if SHORTCUTS.get(update.effective_message.text)=='channels' else 'groups'
+        text,keyboard=chats_page(load_config(),kind=kind)
+        await update.effective_message.reply_text(text,reply_markup=keyboard,parse_mode=ParseMode.MARKDOWN)
+    async def reply_menu_shortcut(update,context):
+        if not await admin_cache.is_admin(update.effective_chat,update.effective_user.id):
+            await update.effective_message.reply_text("Este menu é reservado aos administradores do bot.")
+            return
+        key=SHORTCUTS.get(update.effective_message.text)
+        actions={"panel":panel_handler.cmd_config,"acervo":cmd_acervo_dashboard,
+                 "compose":panel_handler.cmd_comunicado,"history":panel_handler.cmd_agendados,
+                 "channels":reply_linked_chats,"groups":reply_linked_chats,
+                 "allowed":cmd_whitelist_hub,"help":admin_cmd_handler.cmd_ajuda}
+        if key in actions:
+            await actions[key](update,context)
+    shortcut_pattern=re.compile("^(?:"+"|".join(re.escape(text) for text in SHORTCUTS)+")$")
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & filters.Regex(shortcut_pattern),reply_menu_shortcut))
 
     # 3. Monitoramento de Mensagens Normais (Antispam, Anti-Repetição, Locks, Modo Noturno e Auto-Respostas)
     # Exclui comandos (/comando) e atualizações de status do pipeline de mensagens comuns

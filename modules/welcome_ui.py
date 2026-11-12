@@ -30,217 +30,16 @@ def format_time_label(seconds: int) -> str:
     return f"{m} min"
 
 
-def generate_welcome_groups_selector(cfg: dict):
-    """
-    Central de Boas-Vindas:
-    Apresenta de forma clara o Padrão Geral (Global) e a lista de Grupos com seus status.
-    """
-    groups = cfg.get("linked_groups", [])
-    gw = cfg.get("group_welcomes", {})
-    main_grp = cfg.get("main_group_id")
+def generate_welcome_groups_selector(cfg: dict,page=1):
+    from modules.menu_screens import welcome_groups
+    return welcome_groups(cfg,page)
 
-    w_gen = cfg.get("welcome", {})
-    gen_enabled = w_gen.get("enabled", True)
-    gen_status = "🟢 Ativado" if gen_enabled else "🔴 Desativado"
-    gen_photo = "🟢 Configurada" if w_gen.get("photo") else "⚪ Nenhuma"
-    gen_btns = len(w_gen.get("buttons", []))
-    gen_sec = w_gen.get("delete_welcome_after_seconds", 600)
-    gen_del_str = format_time_label(gen_sec)
-
-    text = (
-        "💬 ══════════════════════ 💬\n"
-        "   <b>CENTRAL DE BOAS-VINDAS</b>\n"
-        "💬 ══════════════════════ 💬\n\n"
-        "Gerencie como os novos membros são recepcionados nos seus grupos!\n\n"
-        "⭐️ <b>PADRÃO GERAL (GLOBAL):</b>\n"
-        f"• <b>Status:</b> <code>{gen_status}</code>\n"
-        f"• <b>Foto / Banner:</b> <code>{gen_photo}</code>\n"
-        f"• <b>Botões com Link:</b> <code>{gen_btns} item(s)</code>\n"
-        f"• <b>Auto-Apagar:</b> <code>{gen_del_str}</code>\n\n"
-        f"👥 <b>GRUPOS VINCULADOS ({len(groups)}):</b>\n"
-    )
-
-    if not groups:
-        text += (
-            "<i>Nenhum grupo específico vinculado ainda.\n"
-            "Envie /setgrupo dentro de qualquer grupo como admin para vinculá-lo!</i>\n\n"
-        )
-    else:
-        for g in groups:
-            gid = str(g.get("id"))
-            gtit = g.get("title", f"Grupo {gid}")
-            mode = get_welcome_mode_for_chat(cfg, gid)
-            if mode == "inherited":
-                m_label = "🔗 Herdando Padrão Geral"
-            elif mode == "custom":
-                m_label = "✨ Mensagem Própria Exclusiva"
-            else:
-                m_label = "🔴 Desativada neste grupo"
-            text += f"• <b>{html.escape(gtit)}:</b> <code>{m_label}</code>\n"
-        text += "\n"
-
-    text += (
-        "💡 <b>Como funciona:</b>\n"
-        "• <b>Padrão Geral:</b> Serve de modelo automático para todos os grupos.\n"
-        "• <b>Mensagem Própria:</b> Se quiser um texto ou foto diferente apenas para um grupo específico, basta tocar nele abaixo e personalizar!\n\n"
-        "👉 <i>Selecione o Padrão Geral ou um grupo para gerenciar:</i>"
-    )
-
-    kb = [
-        [InlineKeyboardButton(f"⭐️ Configurar Padrão Geral [{gen_status}]", callback_data="cfg:welcome:cfg:general")]
-    ]
-
-    for g in groups:
-        gid = str(g.get("id"))
-        gtit = g.get("title", f"Grupo {gid}")
-        mode = get_welcome_mode_for_chat(cfg, gid)
-        if mode == "inherited":
-            tag = "🔗 Padrão Geral"
-        elif mode == "custom":
-            tag = "✨ Própria"
-        else:
-            tag = "🔴 Off"
-
-        is_main = " ⭐️" if g.get("id") == main_grp else ""
-        btn_label = f"👥 {gtit[:20]}{is_main} [{tag}]"
-        kb.append([InlineKeyboardButton(btn_label, callback_data=f"cfg:welcome:cfg:{gid}")])
-
-    kb.append([InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")])
-    return text, InlineKeyboardMarkup(kb)
 
 
 def generate_sub_welcome(cfg: dict, target_group_id: str = "general"):
-    """
-    Painel de configuração de Boas-Vindas para um destino específico (geral ou grupo).
-    Oferece opções claras de herança, personalização e teste ao vivo.
-    """
-    target_group_id = str(target_group_id)
-    is_general = (target_group_id in ("general", "0", ""))
+    from modules.menu_screens import welcome_editor
+    return welcome_editor(cfg,target_group_id)
 
-    if is_general:
-        w = cfg.get("welcome", {})
-        title_label = "⭐️ Padrão Geral (Todos os Grupos)"
-        mode = "general"
-    else:
-        g_item = next((g for g in cfg.get("linked_groups", []) if str(g.get("id")) == target_group_id), None)
-        title_label = f"👥 {g_item.get('title', 'Grupo')}" if g_item else f"👥 Grupo {target_group_id}"
-        mode = get_welcome_mode_for_chat(cfg, target_group_id)
-        w = get_welcome_for_chat(cfg, target_group_id)
-
-    enabled = w.get("enabled", True) and (mode != "disabled")
-    sec = w.get("delete_welcome_after_seconds", 600)
-    del_srv = w.get("delete_service_messages", True)
-    has_photo = bool(w.get("photo"))
-    buttons_count = len(w.get("buttons", []))
-    art_url = w.get("article_url")
-    msg_preview = w.get("message", "")
-    if len(msg_preview) > 140:
-        msg_preview = msg_preview[:140] + "..."
-
-    status_tag = "🟢 Ativado" if enabled else "🔴 Desativado"
-
-    if is_general:
-        mode_desc = (
-            "⭐️ <b>DESTINO: PADRÃO GERAL (GLOBAL)</b>\n"
-            "<i>Esta é a mensagem base do bot. Qualquer grupo que não tiver uma mensagem própria exclusiva usará esta configuração.</i>\n"
-        )
-    elif mode == "inherited":
-        mode_desc = (
-            f"🎯 <b>DESTINO: {html.escape(title_label)}</b>\n"
-            "🔗 <b>MODO ATUAL: Herdando o Padrão Geral</b>\n"
-            "<i>Este grupo usa o texto, foto e botões do Padrão Geral. Qualquer alteração feita no Padrão Geral será aplicada aqui automaticamente.</i>\n"
-        )
-    elif mode == "custom":
-        mode_desc = (
-            f"🎯 <b>DESTINO: {html.escape(title_label)}</b>\n"
-            "✨ <b>MODO ATUAL: Mensagem Própria Exclusiva</b>\n"
-            "<i>Este grupo possui texto, foto e botões independentes do padrão global!</i>\n"
-        )
-    else:
-        mode_desc = (
-            f"🎯 <b>DESTINO: {html.escape(title_label)}</b>\n"
-            "🔴 <b>MODO ATUAL: Desativado neste Grupo</b>\n"
-            "<i>Nenhuma mensagem de boas-vindas será enviada quando membros entrarem neste grupo.</i>\n"
-        )
-
-    text = (
-        "💬 ══════════════════════ 💬\n"
-        "   <b>CONFIGURAÇÃO DE BOAS-VINDAS</b>\n"
-        "💬 ══════════════════════ 💬\n\n"
-        f"{mode_desc}\n"
-        f"• <b>Status no Chat:</b> <code>{status_tag}</code>\n"
-        f"• <b>Imagem / Banner:</b> <code>{'🟢 Configurada' if has_photo else '⚪ Nenhuma'}</code>\n"
-        f"• <b>Artigo (Telegraph):</b> <code>{html.escape(art_url) if art_url else '⚪ Nenhum'}</code>\n"
-        f"• <b>Botões com Link:</b> <code>{buttons_count} linha(s)/item(s)</code>\n"
-        f"• <b>Auto-Apagar Mensagem:</b> <code>{format_time_label(sec)}</code>\n"
-        f"• <b>Limpar Aviso de Entrada:</b> <code>{'🟢 Sim' if del_srv else '🔴 Não'}</code>\n\n"
-        f"📌 <b>Texto Atual:</b>\n<i>{html.escape(msg_preview)}</i>\n"
-    )
-
-    kb = []
-
-    # 1. Botões de edição de conteúdo
-    if is_general or mode == "custom":
-        kb.append([
-            InlineKeyboardButton("📝 Alterar Texto", callback_data=f"cfg:edit:welcome_text:{target_group_id}"),
-            InlineKeyboardButton("🖼️ Alterar Foto", callback_data=f"cfg:edit:welcome_photo:{target_group_id}")
-        ])
-        kb.append([
-            InlineKeyboardButton("🔘 Configurar Botões", callback_data=f"cfg:edit:welcome_buttons:{target_group_id}"),
-            InlineKeyboardButton("📄 Definir Artigo", callback_data=f"cfg:edit:welcome_article:{target_group_id}")
-        ])
-
-        cleanup_row = []
-        if has_photo:
-            cleanup_row.append(InlineKeyboardButton("🗑️ Remover Foto", callback_data=f"cfg:del:welcome_photo:{target_group_id}"))
-        if buttons_count > 0:
-            cleanup_row.append(InlineKeyboardButton("🗑️ Remover Botões", callback_data=f"cfg:del:welcome_buttons:{target_group_id}"))
-        if art_url:
-            cleanup_row.append(InlineKeyboardButton("🗑️ Remover Artigo", callback_data=f"cfg:del:welcome_article:{target_group_id}"))
-        if cleanup_row:
-            kb.append(cleanup_row)
-
-        kb.append([
-            InlineKeyboardButton("🔴 Desativar" if enabled else "🟢 Ativar", callback_data=f"cfg:toggle:welcome:{target_group_id}"),
-            InlineKeyboardButton(f"⏱️ Auto-Apagar ({format_time_label(sec)}) ▾", callback_data=f"cfg:sub:wtime:{target_group_id}")
-        ])
-
-    # 2. Alternadores de Modo para Grupos Específicos
-    if not is_general:
-        if mode == "inherited":
-            kb.append([
-                InlineKeyboardButton("✨ Criar Mensagem Própria para este Grupo", callback_data=f"cfg:welcome:copy:{target_group_id}")
-            ])
-            kb.append([
-                InlineKeyboardButton("🔴 Desativar Boas-Vindas neste Grupo", callback_data=f"cfg:welcome:disable:{target_group_id}")
-            ])
-        elif mode == "custom":
-            kb.append([
-                InlineKeyboardButton("🔄 Voltar a Herdar o Padrão Geral", callback_data=f"cfg:welcome:reset:{target_group_id}")
-            ])
-        elif mode == "disabled":
-            kb.append([
-                InlineKeyboardButton("🟢 Ativar (Herdando Padrão Geral)", callback_data=f"cfg:welcome:enable_default:{target_group_id}"),
-                InlineKeyboardButton("✨ Ativar com Mensagem Própria", callback_data=f"cfg:welcome:copy:{target_group_id}")
-            ])
-
-        # Botão de Teste ao Vivo no Grupo
-        if enabled:
-            kb.append([
-                InlineKeyboardButton("🚀 Testar Disparo no Grupo Agora", callback_data=f"cfg:welcome:test:{target_group_id}")
-            ])
-
-    # 3. Ver Prévia
-    kb.append([
-        InlineKeyboardButton("👀 Ver Prévia Completa", callback_data=f"cfg:preview:welcome:{target_group_id}")
-    ])
-
-    # 4. Voltar
-    kb.append([
-        InlineKeyboardButton("◀ Voltar à Central de Boas-Vindas", callback_data="cfg:welcome:select")
-    ])
-
-    return text, InlineKeyboardMarkup(kb)
 
 
 def generate_sub_welcome_time(cfg: dict, target_group_id: str = "general"):
@@ -303,9 +102,10 @@ async def handle_welcome_callback(panel, update: Update, context: ContextTypes.D
     chat = update.effective_chat
     cfg = load_config()
 
-    if data in ("cfg:sub:welcome", "cfg:welcome:select"):
+    if data in ("cfg:sub:welcome", "cfg:welcome:select") or data.startswith("cfg:welcome:select:"):
         await query.answer()
-        text, markup = generate_welcome_groups_selector(cfg)
+        page=int(data.split(":")[-1]) if data.startswith("cfg:welcome:select:") and data.split(":")[-1].isdigit() else 1
+        text, markup = generate_welcome_groups_selector(cfg,page)
         try:
             await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
         except Exception:

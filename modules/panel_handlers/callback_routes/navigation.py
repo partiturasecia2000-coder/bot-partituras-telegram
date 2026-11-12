@@ -6,14 +6,14 @@ async def on_cfg_close(self, update, context, cfg, title):
     chat = update.effective_chat
     user = update.effective_user
     data = query.data
-    await query.answer("Configurações salvas!")
+    await query.answer("Painel fechado.")
     try:
         await query.edit_message_text(
-            "✅ *Painel de Configurações Concluído!*\nTodas as alterações estão salvas e ativas.",
+            "✓ *Painel fechado*\nUse /painel para abrir novamente.",
             parse_mode=ParseMode.MARKDOWN
         )
     except Exception:
-        await query.edit_message_text("✅ Painel concluído! Alterações salvas.")
+        await query.edit_message_text("Painel fechado. Use /painel para abrir novamente.")
     return
 
 

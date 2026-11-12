@@ -379,47 +379,9 @@ async def check_backup_and_report_cycle(bot) -> None:
 # =====================================================================
 
 def generate_sub_backup(cfg: dict) -> Tuple[str, InlineKeyboardMarkup]:
-    """Gera a tela de gerenciamento de Backups e Relatórios no Painel."""
-    b_cfg = cfg.get("backup_system", {})
-    enabled = b_cfg.get("enabled", True)
-    channel_id = b_cfg.get("channel_id", DEFAULT_BACKUP_CHANNEL)
+    from modules.menu_screens import backup_menu
+    return backup_menu(cfg)
 
-    daily_on = b_cfg.get("daily_backup_enabled", True)
-    weekly_on = b_cfg.get("weekly_report_enabled", True)
-
-    last_bkp = b_cfg.get("last_daily_backup_timestamp", 0)
-    last_rep = b_cfg.get("last_weekly_report_timestamp", 0)
-
-    last_bkp_str = datetime.fromtimestamp(last_bkp).strftime("%d/%m/%Y às %H:%M") if last_bkp > 0 else "Ainda não enviado"
-    last_rep_str = datetime.fromtimestamp(last_rep).strftime("%d/%m/%Y às %H:%M") if last_rep > 0 else "Ainda não enviado"
-
-    daily_btn_text = "💾 Backup Diário (24h): 🟢 Ativado" if daily_on else "💾 Backup Diário: 🔴 Desativado"
-    weekly_btn_text = "📊 Relatório Semanal (7d): 🟢 Ativado" if weekly_on else "📊 Relatório Semanal: 🔴 Desativado"
-
-    lines = [
-        "💾 *BACKUPS & RELATÓRIOS DO SISTEMA*\n",
-        "Proteção diária do banco de dados e auditoria semanal enviadas diretamente para seu canal privado.\n",
-        f"• 🎯 *Canal de Destino:* `{channel_id}`",
-        f"• 💾 *Backup Automático:* {'🟢 A cada 24 horas' if daily_on else '🔴 Desativado'}",
-        f"  └ _Último envio:_ `{last_bkp_str}`",
-        f"• 📊 *Relatório Semanal:* {'🟢 A cada 7 dias' if weekly_on else '🔴 Desativado'}",
-        f"  └ _Último envio:_ `{last_rep_str}`\n",
-        "💡 _O backup inclui todas as partituras (acervo_partituras.db) e configurações salvas em um arquivo ZIP seguro._"
-    ]
-
-    kb = [
-        [InlineKeyboardButton(daily_btn_text, callback_data="cfg:toggle:daily_bkp")],
-        [InlineKeyboardButton(weekly_btn_text, callback_data="cfg:toggle:weekly_rep")],
-        [
-            InlineKeyboardButton("💾 Fazer Backup Agora", callback_data="cfg:bkp:now"),
-            InlineKeyboardButton("📊 Gerar Relatório Agora", callback_data="cfg:rep:now")
-        ],
-        [InlineKeyboardButton("♻️ Restaurar backup",callback_data="cfg:restore:start")],
-        [InlineKeyboardButton("🎯 Alterar Canal de Destino", callback_data="cfg:bkp:channel")],
-        [InlineKeyboardButton("◀ Voltar a Sistema", callback_data="cfg:hub:system")]
-    ]
-
-    return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
 def _save_backup_progress(key, value):

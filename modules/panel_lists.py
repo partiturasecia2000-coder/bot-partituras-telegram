@@ -94,17 +94,20 @@ def transmission_detail(cfg, item_id, page=1, back_page=1):
     return '\n'.join(lines), Markup(buttons)
 
 
-def chats_page(cfg, page=1):
+def chats_page(cfg, page=1, kind='chats'):
     items = [('grp',x) for x in cfg.get('linked_groups', [])] + [('chn',x) for x in cfg.get('linked_channels', [])]
+    if kind=='channels':items=[item for item in items if item[0]=='chn']
+    if kind=='groups':items=[item for item in items if item[0]=='grp']
     shown, page, pages, _ = page_slice(items, page, 8)
     buttons = []
-    for kind, item in shown:
-        star = ' ⭐' if item['id'] == cfg.get('main_group_id' if kind=='grp' else 'main_channel_id') else ''
-        buttons.append([Button(('👥 ' if kind=='grp' else '📢 ')+str(item.get('title',item['id']))[:30]+star,
-                               callback_data=f'cfg:chat:info:{kind}:{item["id"]}')])
-    buttons += navigation('cfg:list:chats',page,pages)
+    for category, item in shown:
+        star = ' ⭐' if item['id'] == cfg.get('main_group_id' if category=='grp' else 'main_channel_id') else ''
+        buttons.append([Button(('👥 ' if category=='grp' else '📢 ')+str(item.get('title',item['id']))[:30]+star,
+                               callback_data=f'cfg:chat:info:{category}:{item["id"]}')])
+    buttons += navigation('cfg:list:'+kind,page,pages)
     buttons += [[Button('➕ Como vincular',callback_data='cfg:chats:how_to')], [Button('◀ Painel',callback_data='cfg:page:1')]]
-    return f'🌐 *GRUPOS E CANAIS*\n{len(items)} chat(s) — página {page}/{pages}', Markup(buttons)
+    heading={'channels':'CANAIS VINCULADOS','groups':'GRUPOS VINCULADOS'}.get(kind,'GRUPOS E CANAIS')
+    return f'🌐 *{heading}*\n{len(items)} chat(s) — página {page}/{pages}', Markup(buttons)
 
 
 def responders_page(title,cfg,page=1):

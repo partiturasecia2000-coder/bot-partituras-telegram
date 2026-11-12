@@ -1,37 +1,29 @@
-# Atualização para a versão 5
+# Atualizar para a versão 6 — menu
 
-Pare o bot e aplique o ZIP completo. O ponto de entrada e a configuração Discloud continuam iguais. Preserve os arquivos de dados já existentes: `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db`, `agendamentos.db` e a pasta `backups/`.
+1. Pare o bot e aplique o ZIP completo.
+2. Preserve `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db`, `agendamentos.db` e a pasta `backups/`. Se houver uma recuperação interrompida, mantenha também `.restore_journal.json` e `.restore-transactions/`.
+3. Inicie o bot e abra `/painel` para ver o menu novo.
+4. No privado, envie `/menu` para renovar o teclado com os atalhos curtos. Os botões anteriores continuam aceitos.
 
-## Enviar mensagens
+## Organização
 
-Use normalmente `/falar`, `/anunciar`, `/canal` ou `/comunicado`. Agora todos passam pela prévia e pelo mesmo histórico, tanto em envios imediatos quanto agendados.
+- **Nova postagem / Histórico:** atalhos no início do painel.
+- **Segurança:** bloqueios, limites, palavras proibidas e exceções.
+- **Entrada e boas-vindas:** mensagem geral, grupos e aprovação de entrada.
+- **Partituras e acervo:** busca, canais e sincronização.
+- **Mensagens e respostas:** recorrências, respostas automáticas e YouTube.
+- **Limpeza:** comandos, avisos e instruções de limpeza manual.
+- **Sistema e backups:** grupos/canais, horário, registros, backup e restauração.
 
-1. Prepare a mensagem, responda a uma mídia ou use o comando na legenda do arquivo.
-2. Escolha o destino, quando houver seletor.
-3. Confira texto, anexo, destinos, horário, tópico e fixação na prévia. Navegue entre as páginas para ver o conteúdo e a lista completa de destinos.
-4. Use **Ver conteúdo no privado** para conferir a postagem formatada. Essa amostra vai somente ao seu privado; abra a conversa com o bot primeiro.
-5. Pressione **Confirmar envio** ou **Confirmar agendamento**. Sem essa confirmação, não há postagem aos destinos.
-6. Consulte `/agendados` para acompanhar os resultados. As novas tentativas seletivas continuam excluindo os destinos já entregues e os envios sem confirmação.
+Os estados aparecem por escrito. Botões como **Ativar antispam** informam a ação que será aplicada. Use **Voltar** para retornar à área anterior e **Início** para abrir o painel principal. Para sair de uma edição em andamento, use `/cancelar`.
 
-A prévia expira em 30 minutos e só pode ser confirmada pelo autor na mensagem original. Se o horário escolhido já passou, prepare um novo agendamento. PDFs/documentos, fotos, vídeos, áudios e voz são suportados; o `/anunciar` mantém a fixação e o cabeçalho de comunicado.
+Fonte e tema seguem as preferências do Telegram. A prévia HTML fornecida é ilustrativa, usa dados fictícios e funciona sem conexão.
 
-## Restaurar um backup
+## Recursos da versão anterior
 
-1. No privado, abra `/painel` → **Sistema** → **Backup** → **Restaurar backup**.
-2. Envie o ZIP gerado pelo bot, com até 20 MB.
-3. Aguarde a validação. Confira os arquivos e quantidades na prévia, incluindo a política de pausa das programações antigas.
-4. Confirme em até cinco minutos ou cancele. A cópia do estado atual será criada antes da substituição.
-5. Ao terminar, use **Baixar cópia anterior** e guarde o arquivo. Ele também permanece na pasta `backups/` da aplicação.
+Postagens continuam exigindo prévia e confirmação. `/falar`, `/anunciar`, `/canal` e `/comunicado` usam o mesmo histórico em `/agendados`. Backups continuam disponíveis apenas a administradores no privado; restauração mantém validação, confirmação e cópia anterior. Após restaurar, revise as programações antigas antes de reativá-las.
 
-O comando `/restaurar` também aceita o ZIP ou arquivos JSON/DB antigos; todos passam pela revisão e confirmação. O comando `/backup` gera um ZIP completo e só o entrega no privado de administradores.
-
-Token, ambiente e destinos atuais de backup/logs são mantidos. IDs administrativos explícitos atuais e seu ID permanecem autorizados; IDs administrativos do backup não são ativados.
-
-Depois de restaurar, confira as configurações e `/tarefas`. Recorrências, YouTube e backups automáticos precisam ser reativados pelos controles do painel após revisão. Transmissões antigas não são disparadas automaticamente. Exclusões antigas restauradas ficam pausadas, sem reativação em lote; novas exclusões funcionam normalmente. Restaurar não remove mensagens que já chegaram ao Telegram.
-
-Se a operação informar que o bot precisa reiniciar, reinicie a aplicação no Discloud. Não apague `.restore_journal.json` nem `.restore-transactions/` se existirem: são usados para recuperar uma troca interrompida antes da inicialização.
-
-## Validação offline
+Validação offline:
 
 ```text
 python -m pip install -r requirements.txt
@@ -40,4 +32,4 @@ python tests/check_regression.py
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Os testes simulam a rede e usam arquivos isolados. Executar `main.py` inicia o bot real. Mantenha apenas uma instância com o mesmo token.
+Não execute duas instâncias com o mesmo token.

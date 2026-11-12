@@ -333,6 +333,9 @@ HELP_CATEGORIES = {
     }
 }
 
+from modules.menu_help import refresh_help
+refresh_help(HELP_CATEGORIES)
+
 class AdminCommandHandler(TrackedBroadcastCommands):
     def __init__(self, admin_cache: AdminCache, user_warnings: dict = None):
         self.admin_cache = admin_cache
@@ -2178,8 +2181,8 @@ class AdminCommandHandler(TrackedBroadcastCommands):
         reply_kb = get_conversation_reply_keyboard()
         await safe_reply(
             update,
-            "🎹 <b>Menu em Botões no Teclado Ativado (Exclusivo Privado)!</b>\n\n"
-            "Os botões fixos agora estão disponíveis no seu teclado no privado para acesso rápido.",
+            "<b>⌨️ Menu rápido pronto</b>\n\n"
+            "Toque nos atalhos abaixo para abrir a área desejada. Para ocultar o teclado, use /fecharmenu.",
             reply_markup=reply_kb,
             parse_mode=ParseMode.HTML
         )

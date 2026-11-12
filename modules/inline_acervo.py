@@ -1073,87 +1073,9 @@ def generate_inline_autodel_menu_text_and_kb():
 
 
 def generate_acervo_dashboard_text_and_kb():
-    """Gera o texto e teclado do painel administrativo do Acervo."""
-    stats = acervo_db.get_stats()
-    cfg = load_config()
-    linked_c = cfg.get("linked_channels", [])
+    from modules.menu_screens import acervo_menu
+    return acervo_menu(load_config(),acervo_db.get_stats())
 
-    total_files = stats.get("total_files", 0)
-    total_chans = stats.get("total_channels", 0)
-    by_type = stats.get("by_type", {})
-    top_channels = stats.get("top_channels", [])
-
-    docs_count = by_type.get("document", 0)
-    aud_count = by_type.get("audio", 0)
-
-    auto_reply_on = cfg.get("acervo_group_auto_reply", False)
-    auto_reply_badge = "ATIVADO 🟢" if auto_reply_on else "DESATIVADO 🔴"
-
-    inline_autodel = cfg.get("inline_auto_delete_seconds", 0)
-    if inline_autodel == 0:
-        inline_autodel_label = "Não apagar 🟢"
-    elif inline_autodel < 60:
-        inline_autodel_label = f"{inline_autodel}s ⏳"
-    elif inline_autodel < 3600:
-        inline_autodel_label = f"{inline_autodel // 60} min ⏳"
-    else:
-        hours = inline_autodel / 3600
-        inline_autodel_label = f"{int(hours) if hours.is_integer() else hours}h ⏳"
-
-    notify_enabled = cfg.get("acervo_channel_notify_enabled", True)
-    notify_chat = cfg.get("acervo_channel_notify_chat", "@partiturasecia")
-    notify_badge = "🟢 Ativado" if notify_enabled else "🔴 Desativado"
-
-    lines = [
-        "🎼 ══════════════════════ 🎼",
-        "   <b>ACERVO GLOBAL DE PARTITURAS</b>",
-        "🎼 ══════════════════════ 🎼\n",
-        f"📊 <b>Total de Partituras Indexadas:</b> <code>{total_files}</code>",
-        f"📄 <b>Documentos / PDFs:</b> <code>{docs_count}</code>",
-        f"🎵 <b>Áudios / Playbacks:</b> <code>{aud_count}</code>",
-        f"📢 <b>Canais no Acervo:</b> <code>{total_chans}</code> (de {len(linked_c)} vinculados)",
-        f"📢 <b>Avisar Novas Partituras no Grupo:</b> <code>{notify_badge}</code> (<code>{html.escape(str(notify_chat))}</code>)",
-        f"🗑️ <b>Apagar Busca Inline no Grupo:</b> <code>{inline_autodel_label}</code>",
-        f"🤖 <b>Auto-Resposta no Grupo:</b> <code>{auto_reply_badge}</code>\n"
-    ]
-
-    if top_channels:
-        lines.append("🏆 <b>Top Canais no Acervo:</b>")
-        for ch in top_channels:
-            t = ch.get("channel_title") or f"Canal {ch.get('channel_id')}"
-            qtd = ch.get("qtd", 0)
-            lines.append(f"  • <b>{html.escape(t[:25])}:</b> <code>{qtd}</code> partituras")
-        lines.append("")
-
-    lines.append(
-        "💡 <b>Como Usar a Busca Instantânea (@):</b>\n"
-        "Em qualquer chat ou grupo, basta digitar:\n"
-        "<code>@SeuBot &lt;nome da música ou número&gt;</code>\n"
-        "<i>(Ex: @SeuBot Harpa 15 ou @SeuBot Sax)</i>\n\n"
-        "🤖 <b>Auto-Resposta Inteligente no Grupo:</b>\n"
-        "Quando membros pedem partituras no grupo, o bot consulta o acervo e responde na hora com link e botões!\n"
-        "Toque no botão abaixo para ativar ou desativar a qualquer momento.\n\n"
-        "📥 <b>Como Adicionar / Sincronizar:</b>\n"
-        "1. <b>Automático:</b> Qualquer post novo com PDF nos canais vinculados entra na hora!\n"
-        "2. <b>Exportação JSON (Recomendado):</b> Envie o arquivo <code>result.json</code> aqui no chat e o bot indexa 8.000 partituras em 2 segundos!\n"
-        "3. <b>Encaminhamento:</b> Encaminhe mensagens dos canais direto aqui no privado!"
-    )
-
-    notify_enabled = cfg.get("acervo_channel_notify_enabled", True)
-    notify_badge = "🟢 Ativado" if notify_enabled else "🔴 Desativado"
-
-    kb = [
-        [InlineKeyboardButton(f"📢 Avisos no Grupo: {notify_badge}", callback_data="acervo:toggle:group_notify")],
-        [InlineKeyboardButton(f"🗑️ Apagar Busca Inline: {inline_autodel_label}", callback_data="acervo:inline_autodel_menu")],
-        [InlineKeyboardButton("🔗 Links de Entrada dos Canais", callback_data="acervo:channel_links_menu")],
-        [InlineKeyboardButton(f"🤖 Auto-Resposta: {auto_reply_badge}", callback_data="acervo:toggle:autoreply")],
-        [InlineKeyboardButton("🔍 Testar Busca Agora", switch_inline_query_current_chat="")],
-        [InlineKeyboardButton("🧹 Limpar Mensagens de Texto", callback_data="acervo:purge_chatter")],
-        [InlineKeyboardButton("🔄 Sincronizar / Varrer Canais", callback_data="acervo:scan:menu")],
-        [InlineKeyboardButton("📋 Ver Canais Vinculados", callback_data="cfg:chats:list")],
-        [InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")]
-    ]
-    return "\n".join(lines), InlineKeyboardMarkup(kb)
 
 
 async def cmd_acervo_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):

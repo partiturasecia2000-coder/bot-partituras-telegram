@@ -37,6 +37,8 @@ async def handle_navigation(panel, update, context):
                 page=int(page)
             functions={'tx':lists.transmissions_page,'chats':lists.chats_page,'dest':lists.wizard_destinations,
                        'links':lists.allowed_links,'youtube':lists.youtube_channels,'banned':lists.banned_words}
+            functions['channels']=lambda cfg,page:lists.chats_page(cfg,page,kind='channels')
+            functions['groups']=lambda cfg,page:lists.chats_page(cfg,page,kind='groups')
             if kind=='resp':
                 text,markup=lists.responders_page(update.effective_chat.title or 'Chat',cfg,page)
             elif kind in functions:
