@@ -1,3 +1,4 @@
+import re
 import sys
 import asyncio
 from pathlib import Path
@@ -629,6 +630,8 @@ def main():
             await scheduler.stop()
 
     async def post_init(application):
+        application.bot_data["_panel_handler"]=panel_handler
+        application.bot_data["_admin_handler"]=admin_cmd_handler
         from modules.scheduler import TaskScheduler
         scheduler = TaskScheduler(application)
         application.bot_data["task_scheduler"] = scheduler
@@ -668,7 +671,16 @@ def main():
             logger.debug(f"Não foi possível configurar bot commands: {e_cmd}")
 
     # Constrói o Application do python-telegram-bot
-    app = ApplicationBuilder().token(token).post_init(post_init).post_stop(post_stop).build()
+    app = ApplicationBuilder().concurrent_updates(False).token(token).post_init(post_init).post_stop(post_stop).build()
+
+    from telegram.ext import TypeHandler,ApplicationHandlerStop
+    async def recovery_guard(update,context):
+        from modules.backup_restore import restore_blocks_writes
+        if restore_blocks_writes(context.application):
+            if update.effective_message:
+                await update.effective_message.reply_text("O bot está em recuperação. Aguarde; se a restauração foi interrompida, reinicie a aplicação.")
+            raise ApplicationHandlerStop
+    app.add_handler(TypeHandler(Update,recovery_guard),group=-100)
 
     # Registra erro
     app.add_error_handler(error_handler)
@@ -716,6 +728,21 @@ def main():
 
     # Callbacks de Botões Interativos de Boas-Vindas (Regras, Tutorial, Avisos em modal na tela)
     app.add_handler(CallbackQueryHandler(handle_rich_button_callback, pattern=r"^btn:"))
+
+    # Legendas de mídia não passam pelo CommandHandler de texto.
+    async def caption_command(update,context):
+        caption=update.effective_message.caption or ""
+        match=re.match(r"^/(falar|say|dizer|anunciar|anuncio|canal|postar|post|restaurar|restore|importar)(?:@([A-Za-z0-9_]+))?(?:\s|$)",caption,re.IGNORECASE)
+        if not match:return
+        if match.group(2) and match.group(2).lower()!=(context.bot.username or "").lower():return
+        command=match.group(1).lower()
+        method=(admin_cmd_handler.cmd_say if command in ("falar","say","dizer") else
+                admin_cmd_handler.cmd_anunciar if command in ("anunciar","anuncio") else
+                admin_cmd_handler.cmd_canal if command in ("canal","postar","post") else admin_cmd_handler.cmd_restaurar)
+        await method(update,context)
+        raise ApplicationHandlerStop
+    app.add_handler(MessageHandler(filters.CAPTION & filters.CaptionRegex(
+        re.compile(r"^/(?:falar|say|dizer|anunciar|anuncio|canal|postar|post|restaurar|restore|importar)(?:@[A-Za-z0-9_]+)?(?:\s|$)",re.IGNORECASE)),caption_command),group=-3)
 
     # Handler prioritário para documentos enviados no privado (JSON do Acervo / Partituras)
     app.add_handler(
@@ -839,7 +866,7 @@ def main():
                 label = "último ciclo concluído"
             lines.append(f"• {name}: {label}")
         counts = scheduler.deletions.counts()
-        lines.append(f"Exclusões pendentes: {counts.get('pending', 0)}; com falha: {counts.get('failed', 0)}")
+        lines.append(f"Exclusões pendentes: {counts.get('pending', 0)}; com falha: {counts.get('failed', 0)}; pausadas após restauração: {counts.get('paused', 0)}")
         lines.append(f"Transmissões em execução: {len(scheduler.transmissions)}")
         await update.effective_message.reply_text("\n".join(lines))
 

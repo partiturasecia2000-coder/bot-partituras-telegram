@@ -57,7 +57,11 @@ class InteractivePanelHandler(BroadcastMixin, InputsMixin, CallbacksMixin):
     async def cmd_cancelar(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Cancela qualquer edição pendente ou assistente de transmissão."""
         user = update.effective_user
-        cancelled = False
+        state=getattr(context,"user_data",None) or {}
+        upload=state.pop("_restore_upload_until",None)
+        selection=state.pop("_post_selection",None)
+        cancelled=bool(upload or selection)
+        state.pop("_restore_legacy",None)
         if user and user.id in self.wizard_states:
             self.wizard_states.pop(user.id, None)
             cancelled = True

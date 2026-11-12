@@ -16,6 +16,10 @@ class CallbacksMixin:
             await query.answer("⛔ Apenas administradores podem usar estes botões.", show_alert=True)
             return
 
+        from modules.backup_restore import handle_restore_callback
+        from modules.broadcast_drafts import handle_draft_callback
+        if await handle_restore_callback(update,context):return
+        if await handle_draft_callback(update,context):return
         from modules.confirmations import handle_confirmation, confirm_panel_action
         from modules.panel_navigation import handle_navigation
         if await handle_confirmation(update, context, self):

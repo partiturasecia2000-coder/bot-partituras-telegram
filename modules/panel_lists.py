@@ -31,7 +31,7 @@ def md(value, limit=80):
     return escape_markdown(str(value)[:limit], version=1)
 
 
-STATUS = dict(pending='Aguardando', queued='Na fila', sending='Em envio', sent='Entregue',
+STATUS = dict(draft='Prévia não confirmada',expired='Prévia expirada',pending='Aguardando', queued='Na fila', sending='Em envio', sent='Entregue',
               failed='Falha confirmada', unknown='Sem confirmação', interrupted='Interrompida',
               completed='Concluída', partial='Com pendências', cancelled='Cancelada')
 

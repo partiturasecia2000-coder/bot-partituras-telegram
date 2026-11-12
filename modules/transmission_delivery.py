@@ -23,7 +23,8 @@ def frozen_targets(item, cfg):
               for x in cfg.get('linked_groups', []) + cfg.get('linked_channels', [])}
     results = []
     seen = set()
-    for raw in get_wizard_targets_list(item.get('target', 'main_channel'), cfg):
+    targets=[row['chat_id'] for row in item['destination_snapshot']] if 'destination_snapshot' in item else get_wizard_targets_list(item.get('target', 'main_channel'), cfg)
+    for raw in targets:
         cid = normalize_chat_id(raw)
         if cid in (-1002071806380183, -2071806380183, 2071806380183):
             cid = -1001806380183
@@ -101,7 +102,7 @@ class RecordingBot:
 
     def __getattr__(self, name):
         original = getattr(self.bot, name)
-        if name not in ('send_message', 'send_photo', 'send_video'):
+        if name not in ('send_message','send_photo','send_video','send_document','send_audio','send_voice','copy_message'):
             return original
         async def send(*args, **kwargs):
             message = await original(*args, **kwargs)
@@ -159,15 +160,8 @@ async def execute_transmission(bot, original_item):
                            message_ids=[], reason='', pin_warning='')
         proxy = RecordingBot(bot, item_id, row)
         try:
-            media_id = item.get('media_id')
-            if item.get('media_type') == 'photo' and media_id:
-                message = await smart_send_photo(proxy, chat_id=row['chat_id'], photo=media_id,
-                                                caption=item.get('text', ''), reply_markup=markup)
-            elif item.get('media_type') == 'video' and media_id:
-                message = await smart_send_video(proxy, chat_id=row['chat_id'], video=media_id,
-                                                caption=item.get('text', ''), reply_markup=markup)
-            else:
-                message = await smart_send_message(proxy, chat_id=row['chat_id'], text=item.get('text', ''), reply_markup=markup)
+            from modules.broadcast_content import send_content
+            message=await send_content(proxy,row['chat_id'],item)
             if not message:
                 raise BadRequest('Empty transmission')
         except asyncio.CancelledError:
@@ -180,9 +174,12 @@ async def execute_transmission(bot, original_item):
             continue
         # Confirma a entrega antes de tentar fixar; falha ao fixar não pede reenvio.
         update_destination(item_id, row['chat_id'], status='sent', message_ids=list(proxy.ids))
-        if item.get('pin') and hasattr(message, 'pin'):
+        if item.get('pin'):
             try:
-                await message.pin(disable_notification=False)
+                if hasattr(message,'pin'):
+                    await message.pin(disable_notification=False)
+                else:
+                    await bot.pin_chat_message(chat_id=row['chat_id'],message_id=message.message_id,disable_notification=False)
             except Exception:
                 update_destination(item_id, row['chat_id'], pin_warning='Entregue, mas não foi possível fixar.')
 

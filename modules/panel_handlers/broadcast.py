@@ -109,39 +109,18 @@ class BroadcastMixin:
             await bot.send_message(chat_id=user_id, text=ctrl_text, reply_markup=ctrl_markup)
 
 
-    async def execute_wizard_send(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
-        """O envio imediato usa a mesma fila e o mesmo relatório dos agendados."""
-        state = self._get_or_create_wizard_state(user_id)
-        if not state or (not state.get("text") and not state.get("media_id")):
-            await update.effective_message.reply_text("⚠️ Prepare o texto ou a mídia antes de enviar.")
+    async def execute_wizard_send(self,update,context,user_id):
+        from modules.broadcast_drafts import create_draft,show_preview
+        state=self._get_or_create_wizard_state(user_id)
+        try:
+            item=create_draft(update,state,get_wizard_targets_list(state.get("target","main_channel"),load_config()))
+        except (ValueError,OSError):
+            await update.effective_message.reply_text("Não foi possível preparar a prévia. Confira texto, mídia e destinos.")
             return
-        cfg = load_config()
-        if not get_wizard_targets_list(state.get("target", "main_channel"), cfg):
-            await update.effective_message.reply_text("⚠️ Nenhum destino encontrado.")
-            return
-        existing = cfg.setdefault("scheduled_transmissions", [])
-        item_id = max(int(time.time()*1000), max((x.get("id", 0) for x in existing), default=0)+1)
-        entry = {key: copy.deepcopy(state.get(key)) for key in ("text", "media_type", "media_id", "buttons", "pin", "target", "delay_seconds")}
-        entry.update(id=item_id, target=state.get("target", "main_channel"),
-                     delay_seconds=state.get("delay_seconds", 2), buttons=state.get("buttons", []),
-                     status="pending", schedule_timestamp=time.time(), schedule_display="Envio imediato",
-                     creator_id=user_id, created_at=datetime.now().isoformat())
-        existing.append(entry)
-        if not save_config(cfg):
-            await update.effective_message.reply_text("⚠️ Não foi possível salvar; o rascunho foi mantido.")
-            return
-        self.wizard_states.pop(user_id, None)
-        self.pending_inputs.pop(user_id, None)
-        if update.callback_query:
-            try:
-                await update.callback_query.edit_message_reply_markup(reply_markup=None)
-            except Exception:
-                pass
-        from modules.scheduler import start_scheduled_transmission
-        start_scheduled_transmission(item_id, force=True)
-        await update.effective_message.reply_text(
-            "📨 Transmissão registrada. Acompanhe o resultado por destino:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ver resultados", callback_data=f"cfg:tx:{item_id}:1")]]))
+        self.wizard_states.pop(user_id,None)
+        self.pending_inputs.pop(user_id,None)
+        await show_preview(update,context,item)
+
 
 
 
@@ -158,93 +137,16 @@ class BroadcastMixin:
             await update.effective_message.reply_text(text, reply_markup=markup)
 
 
-    async def save_scheduled_transmission(self, update: Update, context: ContextTypes.DEFAULT_TYPE, state: dict, user_id: int, target_dt: datetime):
-        """Salva a transmissão agendada no config.json e confirma para o administrador."""
-        cfg = load_config()
-        bot = context.bot
-        target = state.get("target", "main_channel")
-        text = state.get("text", "")
-        media_type = state.get("media_type")
-        media_id = state.get("media_id")
-        buttons = state.get("buttons", [])
-        pin = state.get("pin", False)
-        delay_sec = state.get("delay_seconds", 2)
-        dest_label = get_wizard_dest_label(target, cfg)
-        targets = get_wizard_targets_list(target, cfg)
+    async def save_scheduled_transmission(self,update,context,state,user_id,target_dt):
+        from modules.broadcast_drafts import create_draft,show_preview
+        try:
+            item=create_draft(update,state,get_wizard_targets_list(state.get("target","main_channel"),load_config()),
+                schedule_timestamp=target_dt.timestamp(),schedule_display=target_dt.strftime("%d/%m/%Y às %H:%M"))
+        except (ValueError,OSError):
+            await update.effective_message.reply_text("Não foi possível preparar a prévia do agendamento. O rascunho foi mantido.")
+            return
+        self.wizard_states.pop(user_id,None)
+        self.pending_inputs.pop(user_id,None)
+        await show_preview(update,context,item)
 
-        user = update.effective_user
-        admin_name = user.full_name if user else "Admin"
-
-        item_id = int(time.time() * 1000)
-        target_ts = target_dt.timestamp()
-        display_str = target_dt.strftime("%d/%m/%Y às %H:%M")
-
-        entry = {
-            "id": item_id,
-            "target": target,
-            "text": text,
-            "media_type": media_type,
-            "media_id": media_id,
-            "buttons": buttons,
-            "pin": pin,
-            "delay_seconds": delay_sec,
-            "schedule_timestamp": target_ts,
-            "schedule_display": display_str,
-            "creator_id": user_id,
-            "creator_name": admin_name,
-            "status": "pending",
-            "created_at": datetime.now().isoformat()
-        }
-
-        cfg.setdefault("scheduled_transmissions", []).append(entry)
-        save_config(cfg)
-
-        self.wizard_states.pop(user_id, None)
-        if user_id in self.pending_inputs:
-            del self.pending_inputs[user_id]
-            self._save_pending_inputs()
-
-        media_label = "🎥 Vídeo" if media_type == "video" else ("🖼️ Foto" if media_type == "photo" else "⚪ Texto")
-        btns_count = sum(len(r) for r in buttons) if (buttons and isinstance(buttons[0], list)) else len(buttons)
-
-        confirm_text = (
-            "🗓️ *TRANSMISSÃO AGENDADA COM SUCESSO!*\n"
-            "🎼 ══════════════════════ 🎼\n\n"
-            f"• *Destino:* `{dest_label}` ({len(targets)} chats)\n"
-            f"• ⏰ *Horário Programado:* `{display_str}`\n"
-            f"• 🌊 *Distribuição:* `{delay_sec}s entre cada chat (Envio Suave)`\n"
-            f"• 📌 *Fixar no Topo:* `{'Sim 📌' if pin else 'Não'}`\n"
-            f"• 🖼️ *Mídia:* `{media_label}`\n"
-            f"• 🔘 *Botões:* `{btns_count} configurado(s)`\n\n"
-            "✅ O Maestro Bot efetuará o envio e a distribuição de forma 100% autônoma no horário agendado!\n"
-            "Você receberá a confirmação completa aqui no seu privado assim que for disparada."
-        )
-
-        confirm_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🗓️ Ver Agendadas", callback_data="cfg:sched:list")],
-            [InlineKeyboardButton("📢 Nova Transmissão", callback_data="cfg:wiz:start")],
-            [InlineKeyboardButton("◀ Voltar ao Painel", callback_data="cfg:page:1")]
-        ])
-
-        if update.callback_query:
-            try:
-                await update.callback_query.edit_message_text(confirm_text, reply_markup=confirm_markup, parse_mode=ParseMode.MARKDOWN)
-            except Exception:
-                await update.callback_query.edit_message_text(confirm_text, reply_markup=confirm_markup)
-        elif update.effective_message:
-            try:
-                await update.effective_message.reply_text(confirm_text, reply_markup=confirm_markup, parse_mode=ParseMode.MARKDOWN)
-            except Exception:
-                await update.effective_message.reply_text(confirm_text, reply_markup=confirm_markup)
-
-        # Log de Auditoria
-        import html
-        await send_mod_log(
-            bot=bot,
-            event_type="say",
-            title="Transmissão Agendada Criada",
-            user_info=f"Destino: <b>{html.escape(dest_label)}</b> ({len(targets)} chats)",
-            admin_info=f"<b>{html.escape(admin_name)}</b>",
-            details=f"Programado para: {display_str} | Delay: {delay_sec}s/chat"
-        )
 

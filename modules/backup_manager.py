@@ -414,6 +414,7 @@ def generate_sub_backup(cfg: dict) -> Tuple[str, InlineKeyboardMarkup]:
             InlineKeyboardButton("💾 Fazer Backup Agora", callback_data="cfg:bkp:now"),
             InlineKeyboardButton("📊 Gerar Relatório Agora", callback_data="cfg:rep:now")
         ],
+        [InlineKeyboardButton("♻️ Restaurar backup",callback_data="cfg:restore:start")],
         [InlineKeyboardButton("🎯 Alterar Canal de Destino", callback_data="cfg:bkp:channel")],
         [InlineKeyboardButton("◀ Voltar a Sistema", callback_data="cfg:hub:system")]
     ]

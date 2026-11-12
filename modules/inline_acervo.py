@@ -262,6 +262,17 @@ async def handle_private_document(update: Update, context: ContextTypes.DEFAULT_
     Garante que arquivos .json de importação ou arquivos de partituras (.pdf, áudios)
     nunca sejam ignorados ou bloqueados por outros módulos.
     """
+    message=update.effective_message
+    caption=getattr(message,"caption",None) or ""
+    if re.match(r"^/(?:restaurar|restore|importar)(?:@\w+)?(?:\s|$)",caption,re.IGNORECASE):
+        from modules.backup_restore import start_restore_command
+        from telegram.ext import ApplicationHandlerStop
+        await start_restore_command(update,context)
+        raise ApplicationHandlerStop
+    from modules.backup_restore import handle_restore_document
+    if await handle_restore_document(update,context):
+        from telegram.ext import ApplicationHandlerStop
+        raise ApplicationHandlerStop
     from modules.access import require_management_access
     if not await require_management_access(update):
         return
@@ -1402,13 +1413,16 @@ async def handle_acervo_callback(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode=ParseMode.HTML
         )
 
-        asyncio.create_task(scan_channel_task(
+        task=asyncio.create_task(scan_channel_task(
             bot=context.bot,
             channel_id=channel_id,
             admin_chat_id=query.from_user.id,
             status_message_id=status_msg.message_id,
             channel_title=ch_title
         ))
+        tasks=context.application.bot_data.setdefault("_acervo_scan_tasks",set())
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
         return
 
 

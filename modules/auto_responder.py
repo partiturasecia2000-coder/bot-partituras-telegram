@@ -142,7 +142,7 @@ class AutoResponderHandler:
 
                 delay = item.get("delay_seconds", 0)
                 if delay > 0:
-                    asyncio.create_task(self._send_delayed_response(
+                    task=asyncio.create_task(self._send_delayed_response(
                         bot=context.bot,
                         chat_id=chat.id,
                         photo=photo,
@@ -155,6 +155,9 @@ class AutoResponderHandler:
                         item_id=item_id,
                         user_id=user.id
                     ))
+                    tasks=context.application.bot_data.setdefault("_delayed_response_tasks",set())
+                    tasks.add(task)
+                    task.add_done_callback(tasks.discard)
                     logger.info(f"Resposta automática #{item_id} agendada com delay de {delay}s para {user.id}")
                     return True
 

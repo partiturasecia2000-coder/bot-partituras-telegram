@@ -10,6 +10,20 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 CONFIG_PATH = BASE_DIR / "config.json"
+from modules.restore_files import recover_interrupted_restore
+recover_interrupted_restore(BASE_DIR)
+
+_CONFIG_GENERATION=0
+
+
+class ConfigSnapshot(dict):
+    """Captura a geração para rejeitar gravações iniciadas antes de uma restauração."""
+
+
+def invalidate_config_snapshots():
+    global _CONFIG_GENERATION
+    _CONFIG_GENERATION+=1
+
 
 try:
     from dotenv import load_dotenv
@@ -219,7 +233,8 @@ def _serialized_config_operation(function):
 
 @_serialized_config_operation
 def load_config() -> dict:
-    config = copy.deepcopy(DEFAULT_CONFIG)
+    config = ConfigSnapshot(copy.deepcopy(DEFAULT_CONFIG))
+    config.generation=_CONFIG_GENERATION
     bak_path = BASE_DIR / ".config_backup.json"
     user_cfg = None
     for candidate in (CONFIG_PATH, bak_path):
@@ -436,6 +451,9 @@ def get_bot_token() -> str:
 @_serialized_config_operation
 def save_config(config: dict) -> bool:
     """Substitui arquivos completos, mantendo o contrato booleano anterior."""
+    if getattr(config,"generation",_CONFIG_GENERATION)!=_CONFIG_GENERATION:
+        logger.warning("Gravação antiga ignorada após restauração.")
+        return False
     try:
         write_json_atomic(CONFIG_PATH, config)
     except (OSError, ValueError, TypeError):

@@ -176,6 +176,12 @@ class DeliveryUITests(unittest.IsolatedAsyncioTestCase):
         handler.wizard_states[42]={'target':'chn:-100111','text':'Olá','buttons':[],'delay_seconds':0}
         await self.service.start()
         await handler.execute_wizard_send(self.update('cfg:wiz:send'),self.context,42)
+        item=config.load_config()['scheduled_transmissions'][0]
+        self.assertEqual(item['status'],'draft')
+        self.bot.send_message.assert_not_awaited()
+        from modules.broadcast_drafts import handle_draft_callback
+        with patch('modules.access.require_management_access',new=AsyncMock(return_value=True)):
+            await handle_draft_callback(self.update(f'cfg:draft:{item["id"]}:confirm:1'),self.context)
         tasks=list(self.service.transmissions.values())
         await asyncio.gather(*tasks)
         item=config.load_config()['scheduled_transmissions'][0]

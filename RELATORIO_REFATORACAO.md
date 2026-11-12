@@ -1,38 +1,38 @@
-# Versão 4 — transmissões e navegação do painel
+# Versão 5 — restauração, histórico único e prévia completa
 
-Base: `bot_discloud_agendamentos_v3.zip`. O pacote anterior foi preservado. Nenhum deploy nem envio real foi realizado.
+Base: `bot_discloud_transmissoes_painel_v4.zip`. As versões anteriores foram preservadas. Não houve deploy, envio real ou restauração de dados da hospedagem.
 
-## Transmissões por destino
+## Entregas
 
-- As transmissões imediatas do assistente e as agendadas por `/comunicado` usam o mesmo motor e histórico persistente no `config.json` existente.
-- No primeiro disparo, a lista de destinos é normalizada, deduplicada e congelada. Novos canais vinculados depois não entram por acidente em uma tentativa posterior.
-- Cada destino registra estado, número de tentativas, IDs das partes confirmadas, horário e motivo resumido da falha. Textos divididos e fotos/vídeos com legendas longas registram as partes separadamente.
-- O relatório distingue **entregue**, **falha confirmada**, **sem confirmação** e **ainda não enviado**. Falta de permissão, destino inexistente, mídia inválida e limitações do Telegram recebem explicações sem exibir mensagens técnicas brutas.
-- **Tentar somente falhas confirmadas** exclui todos os destinos já entregues, sem confirmação ou não enviados. **Continuar destinos não enviados** trata apenas os destinos que ainda não começaram. As reservas do agendador impedem duas tentativas simultâneas do mesmo registro no processo.
-- Timeout, queda durante a requisição ou falha após entrega parcial ficam sem confirmação e não são reenviados automaticamente. A recuperação após reinício mantém os destinos confirmados, marca o destino em envio como incerto e devolve os destinos apenas enfileirados ao estado de não enviados.
-- O fallback de formatação deixou de repetir pedidos após erros de rede; rejeições confirmadas de formatação continuam permitindo os formatos alternativos. Falha ao fixar a mensagem ou ao enviar o relatório ao criador não transforma uma entrega em falha de envio.
-- A autocorreção de IDs confirmados pelo Telegram e o registro no canal de auditoria foram mantidos.
+**Restauração pelo painel.** Sistema → Backup → Restaurar backup recebe um ZIP no privado do administrador. O arquivo é validado antes de aparecer a confirmação: conteúdo permitido, limites de tamanho, JSON, estrutura e integridade dos bancos SQLite. Arquivos de aplicação, `.env`, caminhos externos, nomes duplicados, links e estruturas incompatíveis são recusados.
 
-## Paginação e confirmações
+A prévia mostra arquivos, quantidade de partituras, exclusões, chats e programações. A confirmação é vinculada ao administrador, conversa e mensagem, expira em cinco minutos e só pode ser usada uma vez. A permissão é conferida novamente na confirmação.
 
-- Paginação nas transmissões/histórico, resultados por destino, grupos/canais, respostas automáticas, destinos do assistente, links permitidos, canais do YouTube, palavras proibidas, links de entrada do acervo e seleção de canais para varredura. Recorrências e usuários da whitelist mantêm a paginação anterior.
-- Endereços longos deixam de ser incorporados aos callbacks: identificadores curtos evitam ultrapassar o limite de tamanho dos botões.
-- Confirmação antes de zerar o acervo, remover textos do acervo, apagar todas as palavras proibidas, excluir recorrências/respostas, desvincular chats, remover monitoramento do YouTube, remover links permitidos e executar `/limpar` no chat.
-- A confirmação é vinculada ao usuário, chat e mensagem; expira em dois minutos e só pode ser consumida uma vez. Cancelamento, reinício e perda de permissão impedem a execução. Se o item configurável mudar entre a prévia e a confirmação, é necessário abrir e confirmar novamente.
-- `/limpar` limita a seleção às mensagens anteriores ao comando original; mensagens novas não entram na limpeza.
+Antes da substituição, o bot pausa o agendador e tarefas de importação/respostas atrasadas e cria um ZIP do estado atual em `backups/`. A troca tem diário de reversão. Uma falha durante a aplicação tenta recompor o estado anterior; se houver interrupção do processo, a recuperação é executada ao importar a configuração, antes de inicializar o banco do acervo. Se a reversão não puder terminar, o bot bloqueia novas operações até reiniciar/recuperar. Gravações antigas de configuração são rejeitadas após uma restauração.
 
-## Validação
+O token e o ambiente atuais não são substituídos. IDs administrativos explícitos atuais são mantidos e o responsável pela restauração permanece autorizado; IDs vindos do arquivo não são ativados. Os destinos atuais dos backups e logs também são preservados. Recorrências, transmissões antigas, YouTube, exclusões restauradas e backups automáticos ficam pausados ou marcados para revisão, evitando executar tarefas antigas involuntariamente. A tela informa essa política antes da confirmação.
 
-**77 testes automatizados aprovados**, incluindo os 38 anteriores e 39 novos. Os novos casos verificam confirmação por destino, novas tentativas seletivas, destino congelado, timeout sem repetição, entregas parciais, falha de gravação após aceitação pelo Telegram, reinício durante a rede, envio imediato com histórico, correção de IDs, falha ao fixar/notificar, proteção e expiração de confirmações, permissões, paginação e acesso aos últimos canais do acervo.
+O comando `/restaurar` antigo passa pela mesma validação e prévia, incluindo arquivos JSON/DB de versões anteriores. `/backup` agora gera o ZIP completo e só permite download por administrador no privado, em vez de publicar configurações no grupo. Foi corrigida a liberação irrestrita de usuários privados na verificação administrativa dessa classe de comandos.
 
-Também passaram a checagem de 52 funções de menus/importações/persistência/SQLite/durações, compilação dos arquivos Python e verificação de referências globais dos módulos alterados. A integridade e o conteúdo do ZIP final foram conferidos.
+**Histórico único.** `/falar`, `/anunciar` e `/canal`, com seus aliases, usam o mesmo motor do `/comunicado`: resultados por destino, confirmação das partes, falhas categorizadas e repetição apenas dos destinos elegíveis. Foram mantidos seleção por ID/número/username, grupos/canais, tópicos, fixação, botões e cópia de postagem. O motor passou a aceitar também documento/PDF, áudio e voz, além de texto, foto e vídeo. Comandos em legendas são tratados antes da importação de documentos do acervo.
 
-Testes locais/offline em Windows, Python 3.14.3 e dependências fixadas da versão 3; chamadas externas simuladas. Não houve validação conectada ao Telegram, YouTube ou Discloud.
+**Prévia completa obrigatória.** Os comandos e o assistente, em envio imediato ou agendado, criam uma prévia que não dispara a postagem. Ela reúne conteúdo legível, tipo de mídia, todos os destinos, horário, distribuição, botões, tópico e fixação. Textos e destinos longos são paginados. “Ver conteúdo no privado” mostra a postagem formatada somente ao autor; não publica a amostra no grupo de destino. Apenas “Confirmar envio/agendamento” libera o registro para o agendador. Prévia expirada, conteúdo alterado, perda de acesso, mensagem de confirmação diferente e clique repetido não iniciam novo envio. Um horário vencido durante a prévia exige preparar outro agendamento.
 
-## Atualização e limites
+## Verificação
 
-Configuração Discloud, `Procfile`, `config.py`, configuração de exemplo, dependências e mídias foram preservados. Nenhuma credencial foi removida ou divulgada. Preserve `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db` e `agendamentos.db` da hospedagem ao atualizar.
+- **135 testes automatizados aprovados**, incluindo 77 testes da versão anterior e 58 novos cenários de restauração/comandos.
+- Validação de ZIP/JSON/SQLite, rejeição de caminhos e arquivos indevidos, confirmação, autorização, cópia anterior, reversão de troca parcial, recuperação no início do processo e recusa de gravações antigas.
+- Mídias, tópicos, cópia de post, fixação, histórico comum, prévia obrigatória, clique duplicado, destinos removidos, horários vencidos e amostra privada de comandos feitos no grupo.
+- Roteamento das legendas conferido com objetos reais do SDK, sem chamadas externas.
+- Checagem anterior de 52 funções de menus/importações/persistência/SQLite/durações, compilação e verificação de referências globais dos módulos alterados aprovadas.
+- Pacote final conferido quanto a integridade, presença dos arquivos e preservação de deploy, mídias, dependências e valores originais de configuração/token.
 
-O histórico detalhado é criado para novos envios do assistente `/comunicado`, imediatos ou agendados. Envios antigos não possuem confirmações por destino e não recebem botão de reenvio seletivo. Comandos avulsos como `/falar`, `/anunciar` e `/canal`, assim como as mensagens recorrentes, mantêm seus fluxos próprios e não são convertidos para esse histórico nesta versão. Use o assistente para obter o acompanhamento novo.
+Testes locais em Windows, Python 3.14.3, com as dependências fixadas existentes e chamadas de rede simuladas. A validação conectada ao Telegram e ao Discloud continua pendente.
 
-“Entregue” significa que a API confirmou o envio, não que alguém leu a mensagem. Não existe garantia de entrega exatamente uma vez em uma queda entre Telegram e gravação local; resultados sem confirmação exigem conferência no destino e permanecem fora das novas tentativas. Os motivos exibidos são categorias resumidas, sem guardar o texto bruto das exceções. Mantenha uma única instância por token/conjunto de dados.
+## Uso e limites
+
+Atualize o ZIP completo e preserve `.env`, `config.json`, `.config_backup.json`, `acervo_partituras.db`, `agendamentos.db` e a pasta `backups/` da hospedagem. Se existir um diário de restauração interrompida, preserve também `.restore_journal.json` e `.restore-transactions/` até concluir a recuperação.
+
+Os comandos de postagem agora pedem confirmação em vez de enviar imediatamente. A prévia expira em 30 minutos; a restauração tem limite de upload de 20 MB e conteúdo descompactado de 128 MB. É necessário espaço livre para a cópia anterior e a reversão. As cópias anteriores ficam no servidor e são oferecidas ao responsável para download no privado por uma hora.
+
+Restaurar um backup não desfaz mensagens já entregues no Telegram. Tarefas antigas são mantidas para conferência, e exclusões restauradas não são reativadas em lote nesta versão; novas exclusões continuam funcionando. Backups automáticos, YouTube e recorrências podem ser reativados pelos controles já existentes após revisão. Envios sem confirmação continuam fora das novas tentativas, pois não há garantia de entrega exatamente uma vez entre uma resposta de rede e a gravação local. Mantenha uma única instância por token/conjunto de dados.
